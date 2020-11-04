@@ -1,0 +1,26 @@
+plugins {
+    id 'application'
+    id 'java'
+}
+
+apply plugin: 'java-library'
+
+group 'org.example'
+version '1.0-SNAPSHOT'
+
+repositories {
+    jcenter()
+}
+
+dependencies {
+    testCompile group: 'junit', name: 'junit', version: '4.12'
+    compile "com.typesafe.akka:akka-remote_2.13:2.6.5"
+    compile "com.typesafe.akka:akka-cluster_2.13:2.6.5"
+    //compile "io.aeron:aeron-driver:1.27.0"
+    //compile "io.aeron:aeron-client:1.27.0"
+
+    compile "com.typesafe.akka:akka-serialization-jackson_2.13:2.6.5"
+    compile "com.fasterxml.jackson.core:jackson-core:2.10.0"
+    compile "com.fasterxml.jackson.core:jackson-databind:2.10.0"
+    compile "com.fasterxml.jackson.core:jackson-annotations:2.10.0"
+}
