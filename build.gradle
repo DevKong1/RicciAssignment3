@@ -13,14 +13,23 @@ repositories {
 }
 
 dependencies {
-    testCompile group: 'junit', name: 'junit', version: '4.12'
-    compile "com.typesafe.akka:akka-remote_2.13:2.6.5"
-    compile "com.typesafe.akka:akka-cluster_2.13:2.6.5"
+    // Scala
+    compile 'org.scala-lang:scala-library:2.13.3'
+
+    // Akka
+    compile "com.typesafe.akka:akka-actor_2.13:2.6.10"
+    compile "com.typesafe.akka:akka-actor-typed_2.13:2.6.10"
+    compile "com.typesafe.akka:akka-remote_2.13:2.6.10"
+    compile "com.typesafe.akka:akka-cluster_2.13:2.6.10"
+    compile "com.typesafe.akka:akka-serialization-jackson_2.13:2.6.10"
     //compile "io.aeron:aeron-driver:1.27.0"
     //compile "io.aeron:aeron-client:1.27.0"
 
-    compile "com.typesafe.akka:akka-serialization-jackson_2.13:2.6.5"
-    compile "com.fasterxml.jackson.core:jackson-core:2.10.0"
-    compile "com.fasterxml.jackson.core:jackson-databind:2.10.0"
-    compile "com.fasterxml.jackson.core:jackson-annotations:2.10.0"
+
+    // Test
+    testImplementation 'junit:junit:4.12'
+    testImplementation 'org.scalatest:scalatest_2.13:3.2.0'
+    testImplementation 'org.scalatestplus:junit-4-12_2.13:3.2.0.0'
+
+    testRuntimeOnly 'org.scala-lang.modules:scala-xml_2.13:1.2.0'
 }
