@@ -17,7 +17,6 @@ public class GUI extends JFrame {
         myFrame.setSize(new Dimension(w, h));
         myFrame.setResizable(false);
 
-
         startPanel = new JPanel();
         JPanel nPlayerPanel = new JPanel();
         JPanel nNumberPanel = new JPanel();
@@ -42,10 +41,11 @@ public class GUI extends JFrame {
         nPlayerLabel = new JLabel("Choose a players number", JLabel.TRAILING);
         nPlayerText = new JTextField(10);
         nPlayerLabel.setLabelFor(nPlayerText);
-        nNumberLabel = new JLabel("Choose how much numbers you have to guess", JLabel.TRAILING);
+        nNumberLabel = new JLabel("Choose how many numbers you have to guess", JLabel.TRAILING);
         nNumberText = new JTextField(10);
         nNumberLabel.setLabelFor(nNumberText);
         startButton = new JButton("START");
+        startButton.addActionListener(e -> startGame());
 
         nPlayerPanel.add(nPlayerLabel);
         nPlayerPanel.add(nPlayerText);
@@ -60,6 +60,10 @@ public class GUI extends JFrame {
     }
 
     private void startGame() {
-
+        System.out.println("Number of player: " + nPlayerText.getText() + "\nNumber to guess: " + nNumberText.getText());
+        /*JFrame frame = new JFrame();
+        JPanel gamePanel = new JPanel();
+        JButton ciao = new JButton("CIAO");
+        frame.setVisible(true);*/
     }
 }
