@@ -1,13 +1,14 @@
 package MasterMind.Controller
 
-import akka.actor.{AbstractActor, ActorRef}
+import akka.actor.{AbstractActor, Actor, ActorRef}
 
-class GameController extends AbstractActor {
+//TODO: UPDATE WITH INTERFACE ACTOR AND NOT WITH ABSTRACT ACTOR
+class GameController extends Actor {
 
   /*Reference to the referee*/
   def referee : ActorRef = ???
 
-  override def createReceive(): AbstractActor.Receive = ???
+  override def receive: Receive = ???
 
   /*Used for instance the game */
   def notInGame(): Receive = ???
@@ -30,6 +31,7 @@ class GameController extends AbstractActor {
 
   /*Used when the game need to be stopped from the method inGame*/
   def onStopGame: Unit = ???
+
 }
 
 object GameControllerObj extends GameController {
