@@ -41,7 +41,7 @@ sealed trait Player extends Actor {
   /**
    * Player's secret number, evaluated once on first invocation
    */
-  lazy val secretNumber : Int => Int = (digits:Int ) =>Random.nextInt(math.pow(10,digits).toInt-1)
+  lazy val secretNumber : Int => Int = (digits:Int ) => Random.nextInt(math.pow(10,digits).toInt-1)
 }
 
 class UserPlayer extends Player {

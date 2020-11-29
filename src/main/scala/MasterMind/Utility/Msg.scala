@@ -57,6 +57,8 @@ object GuessResponseMsg {
  def apply(player: ActorRef, guess: Code, response: Response): GuessResponseMsg = new GuessResponseMsg(player, guess, response)
 }
 
+
+
 case class VictoryConfirmMsg(private val player: ActorRef) extends Msg {
  def getPlayer: ActorRef = player
 }
@@ -88,4 +90,15 @@ case class StopGameMsg() extends Msg {
 
 object StopGameMsg {
  def apply(): StopGameMsg = new StopGameMsg()
+}
+
+case class InitializeControllerMsg(private val nplayers: Int, private val codeLength: Int, private val withHuman: Boolean, private val sharedResponses: Boolean) extends Msg {
+ def getPlayers: Int = nplayers
+ def getLength: Int = codeLength
+ def getHuman: Boolean = withHuman
+ def getResponses: Boolean = sharedResponses
+}
+
+object InitializeControllerMsg {
+ def apply(nplayers: Int, codeLength: Int, withHuman: Boolean, sharedResponses: Boolean): InitializeControllerMsg = new InitializeControllerMsg(nplayers, codeLength, withHuman, sharedResponses)
 }
