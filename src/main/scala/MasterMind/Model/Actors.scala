@@ -1,105 +1,127 @@
-package MasterMind.Model
+package scala.MasterMind.Model
 
-import akka.actor.{Actor, ActorRef}
-import scala.util.Random
-import MasterMind.Utility.{AllGuessesMsg, Code, GuessResponseMsg, Response, StartGameMsg, YourTurnMsg}
+import akka.actor.ActorRef
+import MasterMind.Utility.{AllGuessesMsg, Code, CodeBreakerImpl, GuessMsg, GuessResponseMsg, Msg, StartGameMsg, StopGameMsg, VictoryConfirmMsg, YourTurnMsg}
+import akka.actor.typed.Behavior
+import akka.actor.typed.scaladsl.Behaviors
+
+import scala.concurrent.Future
 
 /**
- * Two type of players involved : AI players & human player
+ * Two type of players involved : AI players & human player, they're represented as FSM
  */
-sealed trait Player extends Actor {
+sealed trait Player {
 
-  def opponents: List[ActorRef]
-  def currentOpponentId: Int
-  def opponentsCodes: Map[ActorRef, Int]
-  def guessAllCodes: Boolean
+  def myCode: Code
+  def codeBreaker : CodeBreakerImpl
+  def respond(player:ActorRef,guess:Code)
+  def guess(player:ActorRef,guess:Code)
 
-  def getOpponent(): ActorRef
-  /**
-   * Player receive only 3 types of msgs:
-   * - someone tried to guess its number
-   * - it's his turn
-   * - game's starting
-   */
-   def receive: Receive = {
-     case msg : GuessResponseMsg => playerGuess(msg.getGuess,msg.getResponse)
-     case _ : YourTurnMsg => playTurn()
-     case _ : StartGameMsg => secretNumber
-   }
-
-  /**
-   * Respond to another player's guess
-   * @param guess guessed value
-   * @param response response
-   */
-  def playerGuess(guess:Code,response:Response)
-
-  /**
-   * try to win boy
-   */
-  def playTurn()
   /**
    * Player's secret number, evaluated once on first invocation
+   *
+  lazy val secretNumber : Int => Int = (digits:Int ) => Random.nextInt(math.pow(10,digits).toInt-1)*/
+    /**
+     * First state: idle
+     */
+  def idle(data:Code) : Behavior[Msg] = {
+    Behaviors.receive{
+      case (_,StartGameMsg()) =>  /*generate random number*/ waitTurn(data)
+    }
+  }
+  def idle() : Behavior[Msg] = {
+    Behaviors.receive{
+      case (_,StartGameMsg()) =>  /*generate random number*/ waitTurn(null/*NEED TO declare new code*/)
+    }
+  }
+
+  /**
+   * State in which player's are waiting for their turn
+   * @param mySecretNumber my secret number
+   * @return //
    */
-  lazy val secretNumber : Int => Int = (digits:Int ) => Random.nextInt(math.pow(10,digits).toInt-1)
+  def waitTurn(mySecretNumber:Code): Behavior[Msg] = Behaviors.receive{
+      case (_,_ : YourTurnMsg) =>  myTurn(mySecretNumber)
+      case (_, GuessMsg(actor,code)) => respond(actor,code); Behaviors.same
+      case (_, GuessResponseMsg(player, guess, response)) => /*should update list of other guesses*/ Behaviors.same
+  }
+
+  /**
+   * State representing player's turn and actions
+   * @param mySecretNumber my secret number
+   * @return
+   */
+  def myTurn(mySecretNumber:Code): Behavior[Msg] = {
+    Behaviors.receive{
+      case (_, GuessResponseMsg(player, guess, response)) =>/*should update list of my guesses*/ /*send turn end*/Behaviors.same
+      case (_,_:VictoryConfirmMsg) => /*I WON*/ idle(mySecretNumber)
+    }
+  }
 }
 
 class UserPlayer extends Player {
-
-  override def opponents: List[ActorRef] = ???
-  override def currentOpponentId: Int = ???
-  override def opponentsCodes: Map[ActorRef, Int] = ???
-  override def guessAllCodes: Boolean = ???
-
-  override  def playerGuess(guess:Code,response:Response): Unit = {
-    //TODO
-  }
-  override def playTurn(): Unit = {
-    //TODO
-  }
-  override def getOpponent(): ActorRef = ???
+  override def myCode: Code = ???
+  override def codeBreaker: CodeBreakerImpl = ???
+  override def respond(player: ActorRef, guess: Code): Unit = ???
+  override def guess(player: ActorRef, guess: Code): Unit = ???
 }
-
+object UserPlayer {
+  def apply(): Behavior[Msg] = new UserPlayer().idle(null)
+}
 class AIPlayer extends Player {
-  override def opponents: List[ActorRef] = ???
-  override def currentOpponentId: Int = ???
-  override def opponentsCodes: Map[ActorRef, Int] = ???
-  override def guessAllCodes: Boolean = ???
-
-  override def getOpponent(): ActorRef = ???
-
-  override def playerGuess(guess:Code,response:Response): Unit = {
-    //TODO
-  }
-
-  override def playTurn(): Unit = {
-    //TODO
-  }
+  override def myCode: Code = ???
+  override def codeBreaker: CodeBreakerImpl = ???
+  override def respond(player: ActorRef, guess: Code): Unit = ???
+  override def guess(player: ActorRef, guess: Code): Unit = ???
 }
+object AIPlayer {
+  def apply(): Behavior[Msg] = new AIPlayer().idle(null)
 
+}
 /**
  * Game's corrupted referee
  */
-trait Referee extends Actor {
-  /**
-   * Receives two messages:
-   * - someone tries to win
-   * - game is starting
-   * @return
-   */
-   def receive: Receive = {
-     case msg : AllGuessesMsg => checkWin(msg.getGuesses)
-     case _ : StartGameMsg => generateTurns()
-  }
+sealed trait Referee {
+
 
   /**
    * Check if a player actually won
    * @param value values to check
    */
   def checkWin(value: Map[ActorRef,Code])
-
+  /**Determines play order for a turn*/
+  def generateTurns():Set[ActorRef]
+  /**Allows a player to play his turn*/
+  def playTurn(play: ActorRef): Future[ActorRef]
   /**
-   * Create turns
+   *
    */
-  def generateTurns()
+  def idle() : Behavior[Msg] = {
+    Behaviors.receive{
+      case (_,StartGameMsg()) => refereeTurn()
+    }
+  }
+  def refereeTurn() : Behavior[Msg] = {
+    /*play turns*/
+    Behaviors.receive{
+      case (_,StopGameMsg()) => idle()
+      case (_,AllGuessesMsg(_,_)) => /*checkWin*/ Behaviors.same
+    }
+  }
+}
+
+class RefereeImpl extends Referee{
+  /**
+   * Check if a player actually won
+   *
+   * @param value values to check
+   */
+  override def checkWin(value: Map[ActorRef, Code]): Unit = ???
+  /**Determines play order for a turn*/
+  override def generateTurns(): Set[ActorRef] = ???
+  /** Allows a player to play his turn */
+  override def playTurn(play: ActorRef): Future[ActorRef] = ???
+}
+object Referee{
+  def apply(): Behavior[Msg] = new RefereeImpl().idle()
 }

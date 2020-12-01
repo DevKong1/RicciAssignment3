@@ -1,4 +1,4 @@
-package View;
+package scala.MasterMind.View;
 
 import javax.swing.*;
 import java.awt.*;

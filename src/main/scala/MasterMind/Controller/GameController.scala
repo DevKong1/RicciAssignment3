@@ -1,8 +1,10 @@
-package MasterMind.Controller
+package scala.MasterMind.Controller
 
 import akka.actor.{AbstractActor, Actor, ActorRef, Props}
-import MasterMind.Utility._
-import MasterMind.Model._
+import scala.MasterMind.Utility._
+import scala.MasterMind.Model._
+
+import scala.MasterMind.Model.Referee
 
 //TODO: UPDATE WITH INTERFACE ACTOR AND NOT WITH ABSTRACT ACTOR
 class GameController extends Actor {

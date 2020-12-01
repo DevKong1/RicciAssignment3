@@ -1,4 +1,4 @@
-package MasterMind.Utility
+package scala.MasterMind.Utility
 
 // Response given by the referee to a guess
 

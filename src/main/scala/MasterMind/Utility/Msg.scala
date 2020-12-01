@@ -1,4 +1,4 @@
-package MasterMind.Utility
+package scala.MasterMind.Utility
 
 import akka.actor.ActorRef
 
