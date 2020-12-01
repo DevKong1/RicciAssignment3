@@ -1,4 +1,4 @@
-package scala.MasterMind.Utility
+package MasterMind.Utility
 
 import scala.collection.mutable
 import scala.util.Random

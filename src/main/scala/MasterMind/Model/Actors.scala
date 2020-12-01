@@ -1,4 +1,4 @@
-package scala.MasterMind.Model
+package MasterMind.Model
 
 import akka.actor.ActorRef
 import MasterMind.Utility.{AllGuessesMsg, Code, CodeBreakerImpl, GuessMsg, GuessResponseMsg, Msg, StartGameMsg, StopGameMsg, VictoryConfirmMsg, YourTurnMsg}
@@ -105,7 +105,7 @@ sealed trait Referee {
     /*play turns*/
     Behaviors.receive{
       case (_,StopGameMsg()) => idle()
-      case (_,AllGuessesMsg(_,_)) => /*checkWin*/ Behaviors.same
+      case (_,AllGuessesMsg(_)) => /*checkWin*/ Behaviors.same
     }
   }
 }

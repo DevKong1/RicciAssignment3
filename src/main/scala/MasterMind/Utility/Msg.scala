@@ -1,4 +1,4 @@
-package scala.MasterMind.Utility
+package MasterMind.Utility
 
 import akka.actor.ActorRef
 
@@ -18,13 +18,12 @@ object GuessMsg {
  def apply(player: ActorRef, guess: Code): GuessMsg = new GuessMsg(player, guess)
 }
 
-case class AllGuessesMsg(private val player: ActorRef, private val guesses: Map[ActorRef, Code]) extends Msg {
- def getPlayer : ActorRef = player
+case class AllGuessesMsg(private val guesses: Map[ActorRef, Code]) extends Msg {
  def getGuesses: Map[ActorRef,Code] = guesses
 }
 
 object AllGuessesMsg {
- def apply(player: ActorRef, guesses: Map[ActorRef, Code]): AllGuessesMsg = new AllGuessesMsg(player, guesses)
+ def apply(guesses: Map[ActorRef, Code]): AllGuessesMsg = new AllGuessesMsg(guesses)
 }
 
 //
@@ -40,11 +39,12 @@ object TurnOrderMsg {
  def apply(turns: List[String]): TurnOrderMsg = new TurnOrderMsg(turns)
 }
 
-case class YourTurnMsg() extends Msg {
+case class YourTurnMsg(private val player: ActorRef) extends Msg {
+ def getPlayer : ActorRef = player
 }
 
 object YourTurnMsg {
- def apply(): YourTurnMsg = new YourTurnMsg()
+ def apply(player: ActorRef): YourTurnMsg = new YourTurnMsg(player)
 }
 
 case class GuessResponseMsg(private val player: ActorRef, private val guess: Code, private val response: Response) extends Msg {
@@ -57,8 +57,6 @@ object GuessResponseMsg {
  def apply(player: ActorRef, guess: Code, response: Response): GuessResponseMsg = new GuessResponseMsg(player, guess, response)
 }
 
-
-
 case class VictoryConfirmMsg(private val player: ActorRef) extends Msg {
  def getPlayer: ActorRef = player
 }
@@ -67,11 +65,12 @@ object VictoryConfirmMsg {
  def apply(player: ActorRef): VictoryConfirmMsg = new VictoryConfirmMsg(player)
 }
 
-case class VictoryDenyMsg() extends Msg {
+case class VictoryDenyMsg(private val player: ActorRef) extends Msg {
+ def getPlayer: ActorRef = player
 }
 
 object VictoryDenyMsg {
- def apply(): VictoryDenyMsg = new VictoryDenyMsg()
+ def apply(player: ActorRef): VictoryDenyMsg = new VictoryDenyMsg(player)
 }
 
 //

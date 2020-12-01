@@ -1,4 +1,4 @@
-package scala.MasterMind.View;
+package MasterMind.View;
 
 import javax.swing.*;
 import java.awt.*;
@@ -62,6 +62,10 @@ public class GUI extends JFrame {
     }
 
     private void startGame() {
+
+    }
+
+    public void logChat(String Msg) {
 
     }
 }
