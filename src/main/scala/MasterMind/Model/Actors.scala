@@ -14,8 +14,8 @@ sealed trait Player {
 
   def myCode: Code
   def codeBreaker : CodeBreakerImpl
-  def respond(player:ActorRef,guess:Code)
-  def guess(player:ActorRef,guess:Code)
+  def respond(player:ActorRef,guess:Code): Unit
+  def guess(player:ActorRef,guess:Code): Unit
 
   /**
    * Player's secret number, evaluated once on first invocation
@@ -88,7 +88,7 @@ sealed trait Referee {
    * Check if a player actually won
    * @param value values to check
    */
-  def checkWin(value: Map[ActorRef,Code])
+  def checkWin(value: Map[ActorRef,Code]): Unit
   /**Determines play order for a turn*/
   def generateTurns():Set[ActorRef]
   /**Allows a player to play his turn*/
