@@ -72,7 +72,6 @@ class GameController(GUI: GUI) extends Actor {
       sharedResponses = Option.empty
     }
   }
-
 }
 
 object GameController {

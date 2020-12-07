@@ -161,9 +161,9 @@ object CodeBreakerImplObj {
 }
 
 sealed trait CodeMaker {
-  def setAnswer: Unit
+  def setAnswer(): Unit
   def setAnswer(code: Code): Unit
-  def getAnswer(): Code
+  def getAnswer: Code
   def verify(guess: Code): Response
 }
 

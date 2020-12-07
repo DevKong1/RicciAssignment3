@@ -44,7 +44,7 @@ public class GUI extends JFrame {
         nPlayerLabel = new JLabel("Choose a players number", JLabel.TRAILING);
         nPlayerText = new JTextField(10);
         nPlayerLabel.setLabelFor(nPlayerText);
-        nNumberLabel = new JLabel("Choose how much numbers you have to guess", JLabel.TRAILING);
+        nNumberLabel = new JLabel("Choose how many numbers you have to guess", JLabel.TRAILING);
         nNumberText = new JTextField(10);
         nNumberLabel.setLabelFor(nNumberText);
         startButton = new JButton("START");

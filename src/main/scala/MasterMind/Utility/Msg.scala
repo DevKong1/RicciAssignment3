@@ -91,13 +91,13 @@ object StopGameMsg {
  def apply(): StopGameMsg = new StopGameMsg()
 }
 
-case class InitializeControllerMsg(private val nplayers: Int, private val codeLength: Int, private val withHuman: Boolean, private val sharedResponses: Boolean) extends Msg {
- def getPlayers: Int = nplayers
+case class InitializeControllerMsg(private val nPlayers: Int, private val codeLength: Int, private val withHuman: Boolean, private val sharedResponses: Boolean) extends Msg {
+ def getPlayers: Int = nPlayers
  def getLength: Int = codeLength
  def getHuman: Boolean = withHuman
  def getResponses: Boolean = sharedResponses
 }
 
 object InitializeControllerMsg {
- def apply(nplayers: Int, codeLength: Int, withHuman: Boolean, sharedResponses: Boolean): InitializeControllerMsg = new InitializeControllerMsg(nplayers, codeLength, withHuman, sharedResponses)
+ def apply(nPlayers: Int, codeLength: Int, withHuman: Boolean, sharedResponses: Boolean): InitializeControllerMsg = new InitializeControllerMsg(nPlayers, codeLength, withHuman, sharedResponses)
 }
