@@ -43,7 +43,7 @@ class Code(/*codePoint: Int, pegs: Array[Int], code: String*/) {
     for(i <- 0 to pegs.length) {
       pegs(i) match {
         case 0 =>
-        case _ => q += pegs(i) * Math.pow(10,i)
+        case _ => q = (q + pegs(i) * Math.pow(10,i)).toInt
       }
     }
     q
@@ -89,8 +89,8 @@ class Code(/*codePoint: Int, pegs: Array[Int], code: String*/) {
     if (this eq obj.asInstanceOf[Object]) return true
     if (obj == null) return false
     if (getClass ne obj.getClass) return false
-    val other: Code = obj.asInstanceOf[Code]
-    this.codePoint eq other.codePoint
+    //val other: Code = obj.asInstanceOf[Code]
+    this.codePoint == obj.asInstanceOf[Code].codePoint
   }
 
   override def toString: String = {
@@ -122,7 +122,7 @@ class CodeBreakerImpl extends CodeBreaker {
     var unused: List[Code] = possible.toList
     unused ++= impossible
     for(a <- unused) {
-      var minMaxTable: Array[Array[Int]] = Array.tabulate(Code().codeLength+1, Code().codeLength+1)
+      val minMaxTable: Array[Array[Int]] = Array.ofDim(Code().codeLength+1, Code().codeLength+1).asInstanceOf[Array[Array[Int]]]
       for(b <- possible) {
         val abResp: Response = a.getResponse(b)
         minMaxTable(abResp.getBlack)(abResp.getWhite)+=1
