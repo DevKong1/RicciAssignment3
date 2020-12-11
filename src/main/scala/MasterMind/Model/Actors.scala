@@ -1,9 +1,9 @@
 package MasterMind.Model
 
-import akka.actor.ActorRef
-import MasterMind.Utility.{AllGuessesMsg, Code, CodeBreakerImpl, GuessMsg, GuessResponseMsg, Msg, StartGameMsg, StopGameMsg, VictoryConfirmMsg, YourTurnMsg}
-import akka.actor.typed.Behavior
-import akka.actor.typed.scaladsl.Behaviors
+import MasterMind.Utility._
+import MasterMind.View.GUI
+import akka.actor.typed.{ActorRef, Behavior}
+import akka.actor.typed.scaladsl.{AbstractBehavior, ActorContext, Behaviors}
 
 import scala.concurrent.Future
 
@@ -14,8 +14,8 @@ sealed trait Player {
 
   def myCode: Code
   def codeBreaker : CodeBreakerImpl
-  def respond(player:ActorRef,guess:Code): Unit
-  def guess(player:ActorRef,guess:Code): Unit
+  def respond(player:ActorRef[Msg] ,guess:Code): Unit
+  def guess(player:ActorRef[Msg] ,guess:Code): Unit
 
   /**
    * Player's secret number, evaluated once on first invocation
@@ -62,8 +62,8 @@ sealed trait Player {
 class UserPlayer extends Player {
   override def myCode: Code = ???
   override def codeBreaker: CodeBreakerImpl = ???
-  override def respond(player: ActorRef, guess: Code): Unit = ???
-  override def guess(player: ActorRef, guess: Code): Unit = ???
+  override def respond(player: ActorRef[Msg], guess: Code): Unit = ???
+  override def guess(player: ActorRef[Msg], guess: Code): Unit = ???
 }
 object UserPlayer {
   def apply(): Behavior[Msg] = new UserPlayer().idle(null)
@@ -71,8 +71,8 @@ object UserPlayer {
 class AIPlayer extends Player {
   override def myCode: Code = ???
   override def codeBreaker: CodeBreakerImpl = ???
-  override def respond(player: ActorRef, guess: Code): Unit = ???
-  override def guess(player: ActorRef, guess: Code): Unit = ???
+  override def respond(player: ActorRef[Msg], guess: Code): Unit = ???
+  override def guess(player: ActorRef[Msg], guess: Code): Unit = ???
 }
 object AIPlayer {
   def apply(): Behavior[Msg] = new AIPlayer().idle(null)
@@ -82,17 +82,15 @@ object AIPlayer {
  * Game's corrupted referee
  */
 sealed trait Referee {
-
-
   /**
    * Check if a player actually won
    * @param value values to check
    */
-  def checkWin(value: Map[ActorRef,Code]): Unit
+  def checkWin(value: Map[ActorRef[Msg],Code]): Unit
   /**Determines play order for a turn*/
-  def generateTurns():Set[ActorRef]
+  def generateTurns():Set[ActorRef[Msg]]
   /**Allows a player to play his turn*/
-  def playTurn(play: ActorRef): Future[ActorRef]
+  def playTurn(play: ActorRef[Msg]): Future[ActorRef[Msg]]
   /**
    *
    */
@@ -116,12 +114,74 @@ class RefereeImpl extends Referee{
    *
    * @param value values to check
    */
-  override def checkWin(value: Map[ActorRef, Code]): Unit = ???
+  override def checkWin(value: Map[ActorRef[Msg], Code]): Unit = ???
   /**Determines play order for a turn*/
-  override def generateTurns(): Set[ActorRef] = ???
+  override def generateTurns(): Set[ActorRef[Msg]] = ???
   /** Allows a player to play his turn */
-  override def playTurn(play: ActorRef): Future[ActorRef] = ???
+  override def playTurn(play: ActorRef[Msg]): Future[ActorRef[Msg]] = ???
 }
 object Referee{
   def apply(): Behavior[Msg] = new RefereeImpl().idle()
+}
+
+object GameController {
+  def apply(GUI: GUI) : Behavior[Msg] = Behaviors.setup(context => new noGameController(context, GUI))
+}
+
+class noGameController(context: ActorContext[Msg], GUI: GUI) extends AbstractBehavior[Msg](context) {
+  // No game behavior
+
+  import GameController._
+
+  override def onMessage(msg: Msg): Behavior[Msg] = msg match {
+    // Initialize game msg
+    case msg: InitializeControllerMsg =>
+      val referee: ActorRef[Msg] =  context.spawn(Referee(), "Referee")
+
+      // If Human Player is set, create N - 1 AIPlayers
+      var playersList: List[ActorRef[Msg]] = List.tabulate(if(msg.getHuman) msg.getPlayers - 1 else msg.getPlayers)(n => context.spawn(AIPlayer(), "Player" + n))
+      if (msg.getHuman) playersList = context.spawn(UserPlayer(), "HumanPlayer") :: playersList
+
+      referee ! StartGameMsg()
+      GUI.logChat("The game has started")
+
+      new inGameController(context, GUI, msg.getLength, msg.getResponses, referee, playersList)
+    case _ =>
+      GUI.logChat("Controller received an unexpected Msg")
+      Behaviors.same
+  }
+}
+
+class inGameController(context: ActorContext[Msg], GUI: GUI, codeLength: Int, sharedResponses: Boolean, referee: ActorRef[Msg], players: List[ActorRef[Msg]]) extends AbstractBehavior[Msg](context) {
+  // Game running Behavior
+
+  import GameController._
+
+  override def onMessage(msg: Msg): Behavior[Msg] = msg match {
+    case msg: StopGameMsg =>
+      //Terminate game
+      referee ! msg
+      GUI.logChat("The game has been stopped")
+      new noGameController(context, GUI)
+    case msg: Msg =>
+      logChat(msg)
+      Behaviors.same
+    case _ =>
+      GUI.logChat("Controller received an unexpected type of msg")
+      Behaviors.same
+  }
+
+  // Used to log the game's chat into the GUI
+  def logChat(msg: Msg): Unit = msg match {
+    // NO StartGame or StopGame Msg since it's the controller which executes those commands
+    // Each of this will do an ex. GUI.logChat("Player " + GuessMsg.Player.Name + " tried to guess ....
+    case msg : TurnOrderMsg =>  GUI.logChat("The order for this round is " + msg.getTurns.mkString(" -> "))
+    case msg : YourTurnMsg => GUI.logChat(msg.getPlayer + " it's your turn!")
+    case msg : GuessMsg => GUI.logChat("Trying to guess " + msg.getPlayer + " code -> " + msg.getGuess)
+    case msg : AllGuessesMsg => GUI.logChat("Trying to guess all codes:\n" + msg.getGuesses.map(x => x._1 + " -> " + x._2).mkString(",\n"))
+    case msg : GuessResponseMsg => GUI.logChat("Response from " + msg.getPlayer + " -> " + msg.getResponse)
+    case msg : VictoryConfirmMsg => GUI.logChat(msg.getPlayer + " just won the game! YAY!")
+    case msg : VictoryDenyMsg => GUI.logChat(msg.getPlayer + " failed miserably his attempt at winning the game.")
+    case _ => GUI.logChat("Controller received an unexpected Msg")
+  }
 }

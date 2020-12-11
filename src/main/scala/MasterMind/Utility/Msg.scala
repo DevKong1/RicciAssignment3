@@ -1,6 +1,6 @@
 package MasterMind.Utility
 
-import akka.actor.ActorRef
+import akka.actor.typed.ActorRef
 
 sealed trait Msg {
 }
@@ -9,21 +9,21 @@ sealed trait Msg {
 //  Player Messages
 //
 
-case class GuessMsg(private val player: ActorRef, private val guess: Code) extends Msg {
- def getPlayer: ActorRef = player
+case class GuessMsg(private val player: ActorRef[Msg], private val guess: Code) extends Msg {
+ def getPlayer: ActorRef[Msg] = player
  def getGuess: Code = guess
 }
 
 object GuessMsg {
- def apply(player: ActorRef, guess: Code): GuessMsg = new GuessMsg(player, guess)
+ def apply(player: ActorRef[Msg], guess: Code): GuessMsg = new GuessMsg(player, guess)
 }
 
-case class AllGuessesMsg(private val guesses: Map[ActorRef, Code]) extends Msg {
- def getGuesses: Map[ActorRef,Code] = guesses
+case class AllGuessesMsg(private val guesses: Map[ActorRef[Msg], Code]) extends Msg {
+ def getGuesses: Map[ActorRef[Msg],Code] = guesses
 }
 
 object AllGuessesMsg {
- def apply(guesses: Map[ActorRef, Code]): AllGuessesMsg = new AllGuessesMsg(guesses)
+ def apply(guesses: Map[ActorRef[Msg], Code]): AllGuessesMsg = new AllGuessesMsg(guesses)
 }
 
 //
@@ -39,38 +39,38 @@ object TurnOrderMsg {
  def apply(turns: List[String]): TurnOrderMsg = new TurnOrderMsg(turns)
 }
 
-case class YourTurnMsg(private val player: ActorRef) extends Msg {
- def getPlayer : ActorRef = player
+case class YourTurnMsg(private val player: ActorRef[Msg]) extends Msg {
+ def getPlayer : ActorRef[Msg] = player
 }
 
 object YourTurnMsg {
- def apply(player: ActorRef): YourTurnMsg = new YourTurnMsg(player)
+ def apply(player: ActorRef[Msg]): YourTurnMsg = new YourTurnMsg(player)
 }
 
-case class GuessResponseMsg(private val player: ActorRef, private val guess: Code, private val response: Response) extends Msg {
- def getPlayer: ActorRef = player
+case class GuessResponseMsg(private val player: ActorRef[Msg], private val guess: Code, private val response: Response) extends Msg {
+ def getPlayer: ActorRef[Msg] = player
  def getGuess: Code = guess
  def getResponse: Response = response
 }
 
 object GuessResponseMsg {
- def apply(player: ActorRef, guess: Code, response: Response): GuessResponseMsg = new GuessResponseMsg(player, guess, response)
+ def apply(player: ActorRef[Msg], guess: Code, response: Response): GuessResponseMsg = new GuessResponseMsg(player, guess, response)
 }
 
-case class VictoryConfirmMsg(private val player: ActorRef) extends Msg {
- def getPlayer: ActorRef = player
+case class VictoryConfirmMsg(private val player: ActorRef[Msg]) extends Msg {
+ def getPlayer: ActorRef[Msg] = player
 }
 
 object VictoryConfirmMsg {
- def apply(player: ActorRef): VictoryConfirmMsg = new VictoryConfirmMsg(player)
+ def apply(player: ActorRef[Msg]): VictoryConfirmMsg = new VictoryConfirmMsg(player)
 }
 
-case class VictoryDenyMsg(private val player: ActorRef) extends Msg {
- def getPlayer: ActorRef = player
+case class VictoryDenyMsg(private val player: ActorRef[Msg]) extends Msg {
+ def getPlayer: ActorRef[Msg] = player
 }
 
 object VictoryDenyMsg {
- def apply(player: ActorRef): VictoryDenyMsg = new VictoryDenyMsg(player)
+ def apply(player: ActorRef[Msg]): VictoryDenyMsg = new VictoryDenyMsg(player)
 }
 
 //
