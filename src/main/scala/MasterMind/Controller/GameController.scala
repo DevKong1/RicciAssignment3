@@ -2,23 +2,36 @@ package MasterMind.Controller
 
 import MasterMind.Utility._
 import akka.actor.typed.ActorRef
+import scala.util.Random
 
-object GameController {
-  private val codeLength = 0
-  private val shareGuesses = false
+case class GameController(private var codeLength: Int, private var sendGuessToOthers: Boolean, private var players: Map[ActorRef[Msg], Option[Code]]) {
+  var playersTurn: Int = -1
 
   def getCodeLength: Int = codeLength
-  def getShareGuesses: Boolean = shareGuesses
+  def getSendGuessToOthers: Boolean = sendGuessToOthers
 
-  def setPlayerCode(player: Nothing, code: Code): Boolean = ???
+  def setPlayerCode(player: ActorRef[Msg], code: Code): Boolean = ???
 
-  def getCurrentPlayer: Nothing = ???
-  def getAllPlayers: List[ActorRef[Msg]] = ???
-  def getEnemies(player: Nothing): List[Nothing] = ???
+  def getCurrentPlayer: Int = playersTurn
+  def getAllPlayers: List[ActorRef[Msg]] = players.keys.toList
+  def getEnemies(player: ActorRef[Msg]): List[ActorRef[Msg]] = players.keys.toList.filter(_ != player)
 
-  def goNext = ???
+  def goNext(): Boolean = {
+    if(playersTurn == -1 || playersTurn == players.size - 1) {
+      playersTurn = 0
+      players = Random.shuffle(players)
+      true
+    }
+    else {
+      playersTurn = playersTurn + 1
+      false
+    }
+  }
 
-  def guess(player: Nothing, guess: Code) = ???
-  def tryToWin(player: Nothing, guess: Map[ActorRef[Msg], Code]) = ???
+  def guess(player: ActorRef[Msg], guess: Code) = ???
+  def tryToWin(player: ActorRef[Msg], guess: Map[ActorRef[Msg], Code]) = ???
+}
 
+object GameController {
+  def apply(codeLength: Int, sendGuessToOthers: Boolean, players: List[ActorRef[Msg]]): GameController = new GameController(codeLength, sendGuessToOthers, players.map(_ -> Option.empty).toMap)
 }
