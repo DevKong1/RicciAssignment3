@@ -1,7 +1,7 @@
 package MasterMind.Model
 
 import MasterMind.Utility._
-import MasterMind.View.GUI
+import MasterMind.View.{GUI}
 import akka.actor.typed.{ActorRef, Behavior}
 import akka.actor.typed.scaladsl.{AbstractBehavior, ActorContext, Behaviors}
 
@@ -125,10 +125,10 @@ object Referee{
 }
 
 object GameController {
-  def apply(GUI: GUI) : Behavior[Msg] = Behaviors.setup(context => new noGameController(context, GUI))
+  def apply() : Behavior[Msg] = Behaviors.setup(context => new noGameController(context))
 }
 
-class noGameController(context: ActorContext[Msg], GUI: GUI) extends AbstractBehavior[Msg](context) {
+class noGameController(context: ActorContext[Msg]) extends AbstractBehavior[Msg](context) {
   // No game behavior
 
   import GameController._
@@ -145,14 +145,14 @@ class noGameController(context: ActorContext[Msg], GUI: GUI) extends AbstractBeh
       referee ! StartGameMsg()
       GUI.logChat("The game has started")
 
-      new inGameController(context, GUI, msg.getLength, msg.getResponses, referee, playersList)
+      new inGameController(context, msg.getLength, msg.getResponses, referee, playersList)
     case _ =>
       GUI.logChat("Controller received an unexpected Msg")
       Behaviors.same
   }
 }
 
-class inGameController(context: ActorContext[Msg], GUI: GUI, codeLength: Int, sharedResponses: Boolean, referee: ActorRef[Msg], players: List[ActorRef[Msg]]) extends AbstractBehavior[Msg](context) {
+class inGameController(context: ActorContext[Msg], codeLength: Int, sharedResponses: Boolean, referee: ActorRef[Msg], players: List[ActorRef[Msg]]) extends AbstractBehavior[Msg](context) {
   // Game running Behavior
 
   import GameController._
@@ -162,7 +162,7 @@ class inGameController(context: ActorContext[Msg], GUI: GUI, codeLength: Int, sh
       //Terminate game
       referee ! msg
       GUI.logChat("The game has been stopped")
-      new noGameController(context, GUI)
+      new noGameController(context)
     case msg: Msg =>
       logChat(msg)
       Behaviors.same

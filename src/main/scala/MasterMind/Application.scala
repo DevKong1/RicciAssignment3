@@ -1,8 +1,8 @@
 package MasterMind
 
-import MasterMind.View.GUI
+import MasterMind.View.{GUI, startGame}
 
 object Application extends App {
   println("Ciao Mondo!")
-  new GUI(500,500)
+  GUI.top
 }

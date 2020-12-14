@@ -16,6 +16,7 @@ repositories {
 dependencies {
     // Scala
     compile 'org.scala-lang:scala-library:2.13.3'
+    implementation 'org.scala-lang.modules:scala-swing_2.13:2.1.1'
 
     // Akka
     compile "com.typesafe.akka:akka-actor_2.13:2.6.10"
