@@ -1,11 +1,12 @@
 package MasterMind.Model
 
 import MasterMind.Utility._
-import MasterMind.View.{GUI}
+import MasterMind.View.GUI
 import akka.actor.typed.{ActorRef, Behavior}
 import akka.actor.typed.scaladsl.{AbstractBehavior, ActorContext, Behaviors}
 
 import scala.concurrent.Future
+import scala.util.Random
 
 /**
  * Two type of players involved : AI players & human player, they're represented as FSM
@@ -26,12 +27,12 @@ sealed trait Player {
      */
   def idle(data:Code) : Behavior[Msg] = {
     Behaviors.receive{
-      case (_,StartGameMsg()) =>  /*generate random number*/ waitTurn(data)
+      case (_,StartGameMsg(_,_,_)) =>  /*generate random number*/ waitTurn(data)
     }
   }
   def idle() : Behavior[Msg] = {
     Behaviors.receive{
-      case (_,StartGameMsg()) =>  /*generate random number*/ waitTurn(null/*NEED TO declare new code*/)
+      case (_,StartGameMsg(_,_,_)) =>  /*generate random number*/ waitTurn(null/*NEED TO declare new code*/)
     }
   }
 
@@ -82,13 +83,22 @@ object AIPlayer {
  * Game's corrupted referee
  */
 sealed trait Referee {
+  var playersTurn: Option[Int]
+  var codeLength: Option[Int]
+  var sendGuessToOthers: Option[Boolean]
+  var players: Option[Map[ActorRef[Msg], Option[Code]]]
+
+
+  /** Generates player codes
+   *
+   * @return true if codes have been set, false if they already were set
+   * */
+  def generateCodes(): Boolean
   /**
    * Check if a player actually won
    * @param value values to check
    */
   def checkWin(value: Map[ActorRef[Msg],Code]): Unit
-  /**Determines play order for a turn*/
-  def generateTurns():Set[ActorRef[Msg]]
   /**Allows a player to play his turn*/
   def playTurn(play: ActorRef[Msg]): Future[ActorRef[Msg]]
   /**
@@ -96,29 +106,72 @@ sealed trait Referee {
    */
   def idle() : Behavior[Msg] = {
     Behaviors.receive{
-      case (_,StartGameMsg()) => refereeTurn()
+      case (_,StartGameMsg(newCodeLength, newSendGuessToOthers, newPlayers)) => {
+        codeLength = Option(newCodeLength)
+        sendGuessToOthers = Option(newSendGuessToOthers)
+        players = Option(newPlayers)
+        refereeTurn()
+      }
     }
   }
   def refereeTurn() : Behavior[Msg] = {
     /*play turns*/
     Behaviors.receive{
-      case (_,StopGameMsg()) => idle()
+      case (_,StopGameMsg()) => {
+        idle()
+      }
       case (_,AllGuessesMsg(_)) => /*checkWin*/ Behaviors.same
     }
   }
 }
 
 class RefereeImpl extends Referee{
+  override var playersTurn: Option[Int] = Option.empty
+  override var codeLength: Option[Int] = Option.empty
+  override var sendGuessToOthers: Option[Boolean] = Option.empty
+  override var players: Option[Map[ActorRef[Msg], Option[Code]]] = Option.empty
+
+  /** Generates player codes
+   *
+   * @return true if codes have been set, false if they already were set
+   * */
+  override def generateCodes(): Boolean = {
+    if(players.isDefined) {
+      players = Option(players.get.map(el => el._1 -> Option(new Code())))
+      true
+    } else false
+  }
+
+  def getCurrentPlayer: Option[Int] = playersTurn
+  def getAllPlayers: Option[List[ActorRef[Msg]]] = if(players.isDefined) Option(players.get.keys.toList) else Option.empty
+  def getEnemies(player: ActorRef[Msg]): Option[List[ActorRef[Msg]]] = if(players.isDefined) Option(players.get.keys.toList.filter(_ != player)) else Option.empty
+
+  /** Increments index of current player
+   *
+   * @return true if its a new round, false otherwise or if players are not yet defined
+   * */
+  def goNextTurn(): Boolean = {
+    if((playersTurn.isEmpty || playersTurn.get == players.get.size - 1) && players.isDefined) {
+      players = Option(Random.shuffle(players.get))
+      playersTurn = Option(0)
+      true
+    }
+    else if (players.isDefined) {
+      playersTurn = Option(playersTurn.get + 1)
+      false
+    }
+    else false
+  }
+
   /**
    * Check if a player actually won
    *
    * @param value values to check
    */
   override def checkWin(value: Map[ActorRef[Msg], Code]): Unit = ???
-  /**Determines play order for a turn*/
-  override def generateTurns(): Set[ActorRef[Msg]] = ???
   /** Allows a player to play his turn */
   override def playTurn(play: ActorRef[Msg]): Future[ActorRef[Msg]] = ???
+
 }
 object Referee{
   def apply(): Behavior[Msg] = new RefereeImpl().idle()
@@ -142,17 +195,18 @@ class noGameController(context: ActorContext[Msg]) extends AbstractBehavior[Msg]
       var playersList: List[ActorRef[Msg]] = List.tabulate(if(msg.getHuman) msg.getPlayers - 1 else msg.getPlayers)(n => context.spawn(AIPlayer(), "Player" + n))
       if (msg.getHuman) playersList = context.spawn(UserPlayer(), "HumanPlayer") :: playersList
 
-      referee ! StartGameMsg()
+      referee ! StartGameMsg(msg.getLength, msg.getResponses, playersList.map(_ -> Option.empty).toMap)
       GUI.logChat("The game has started")
 
-      new inGameController(context, msg.getLength, msg.getResponses, referee, playersList)
+      new inGameController(context, referee)
+
     case _ =>
       GUI.logChat("Controller received an unexpected Msg")
       Behaviors.same
   }
 }
 
-class inGameController(context: ActorContext[Msg], codeLength: Int, sharedResponses: Boolean, referee: ActorRef[Msg], players: List[ActorRef[Msg]]) extends AbstractBehavior[Msg](context) {
+class inGameController(context: ActorContext[Msg], referee: ActorRef[Msg]) extends AbstractBehavior[Msg](context) {
   // Game running Behavior
 
   import GameController._

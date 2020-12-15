@@ -77,11 +77,14 @@ object VictoryDenyMsg {
 //  Game Messages
 //
 
-case class StartGameMsg() extends Msg {
+case class StartGameMsg(private val codeLength: Int, private val sendGuessToOthers: Boolean, private val players: Map[ActorRef[Msg], Option[Code]]) extends Msg {
+ def getCodeLength = codeLength
+ def getSendGuessToOthers = sendGuessToOthers
+ def getPlayers = players
 }
 
 object StartGameMsg {
- def apply(): StartGameMsg = new StartGameMsg()
+ def apply(codeLength: Int, sendGuessToOthers: Boolean, players: Map[ActorRef[Msg], Option[Code]]): StartGameMsg = new StartGameMsg(codeLength, sendGuessToOthers, players)
 }
 
 case class StopGameMsg() extends Msg {
