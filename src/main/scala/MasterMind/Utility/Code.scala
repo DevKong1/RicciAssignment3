@@ -9,8 +9,8 @@ class Code(/*codePoint: Int, pegs: Array[Int], code: String*/) {
   val RandomNum: Random = new Random()
   val codeRadix: Int = 10
   val codeLength: Int = 4
-  val pegs: Array[Int] = Array.emptyIntArray
-  val codePoint: Int = 0
+  var pegs: Array[Int] = Array.emptyIntArray
+  var codePoint: Int = 0
 
   def codeRange: Int = Math.pow(codeRadix, codeLength).toInt
 
@@ -101,7 +101,37 @@ class Code(/*codePoint: Int, pegs: Array[Int], code: String*/) {
 }
 
 object Code {
-  def apply(): Code = new Code()
+  def apply(): Code = {
+    val code: Code = new Code()
+    code.codePoint = Random.nextInt(code.codeRange)
+    code.pegs = code.toPegs(code.codePoint)
+    code
+  }
+
+  def apply(codePoint: Int): Code = {
+    val code: Code = new Code()
+    code.codePoint = codePoint
+    code.pegs = code.toPegs(codePoint)
+    code
+  }
+
+  def apply(pegs: Array[Int]): Code = {
+    val code: Code = new Code()
+    code.pegs = pegs
+    code.codePoint = code.toCodePoint(pegs)
+    code
+  }
+
+  def apply(num: String): Code = {
+    val code: Code = new Code()
+    val p: Array[Char] = num.toCharArray
+    code.pegs = Array[Int](p.length)
+    for(i <- 0 to p.length) {
+      code.pegs(i) = Character.digit(p(i), 10)
+    }
+    code.codePoint = code.toCodePoint(code.pegs)
+    code
+  }
 }
 
 sealed trait CodeBreaker {
