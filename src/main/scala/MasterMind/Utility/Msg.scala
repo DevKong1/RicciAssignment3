@@ -18,12 +18,12 @@ object GuessMsg {
  def apply(player: ActorRef[Msg], guess: Code): GuessMsg = new GuessMsg(player, guess)
 }
 
-case class AllGuessesMsg(private val guesses: Map[ActorRef[Msg], Code]) extends Msg {
+case class AllGuessesMsg(candidateWinner:ActorRef[Msg], private val guesses: Map[ActorRef[Msg], Code]) extends Msg {
  def getGuesses: Map[ActorRef[Msg],Code] = guesses
 }
 
 object AllGuessesMsg {
- def apply(guesses: Map[ActorRef[Msg], Code]): AllGuessesMsg = new AllGuessesMsg(guesses)
+ def apply(winner:ActorRef[Msg],guesses: Map[ActorRef[Msg], Code]): AllGuessesMsg = new AllGuessesMsg(winner,guesses)
 }
 
 //
@@ -56,7 +56,8 @@ case class GuessResponseMsg(private val player: ActorRef[Msg], private val guess
 object GuessResponseMsg {
  def apply(player: ActorRef[Msg], guess: Code, response: Response): GuessResponseMsg = new GuessResponseMsg(player, guess, response)
 }
-
+case class TurnEnd(player:ActorRef[Msg]) extends Msg {
+}
 case class VictoryConfirmMsg(private val player: ActorRef[Msg]) extends Msg {
  def getPlayer: ActorRef[Msg] = player
 }
@@ -104,3 +105,5 @@ case class InitializeControllerMsg(private val nPlayers: Int, private val codeLe
 object InitializeControllerMsg {
  def apply(nPlayers: Int, codeLength: Int, withHuman: Boolean, sharedResponses: Boolean): InitializeControllerMsg = new InitializeControllerMsg(nPlayers, codeLength, withHuman, sharedResponses)
 }
+
+

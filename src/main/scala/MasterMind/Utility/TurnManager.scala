@@ -5,20 +5,20 @@ import akka.actor.typed.ActorRef
 import scala.util.Random
 
 
-class TurnManager(var players: Seq[ActorRef[Msg]],var index:Int = 0) {
-  def nextPlayer: ActorRef[Msg] = index match {
-    case players.size-1 =>
-      nextTurnOrder()
-      players(index)
-    case _ => players(index)
-    }
+class TurnManager(var players: Seq[ActorRef[Msg]],var index:Int) {
+  def nextPlayer: ActorRef[Msg] = if (index == players.size) {
+    nextTurnOrder()
+    players(index)
+  }else players(index)
+
 
   private def nextTurnOrder() : Unit = {
     index = 0
     players = Random.shuffle(players)
   }
   def playerTurnEnd():Unit = index+=1
+  def setPlayers(newPlayers:Seq[ActorRef[Msg]]): Unit = players = newPlayers
 }
 object TurnManager{
-  def apply(players: Seq[ActorRef[Msg]], index: Int = 0): TurnManager = new TurnManager(players, index)
+  def apply(): TurnManager = new TurnManager(Seq.empty,0)
 }
