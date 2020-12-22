@@ -94,9 +94,9 @@ sealed trait Referee {
   def checkWin(value: Map[ActorRef[Msg],Code]): Boolean
   /**Allows a player to play his turn*/
   def nextPlayerTurn():Unit
-  def players:Option[Map[ActorRef[Msg],Option[Code]]]
-  def currentPlayer: Future[ActorRef[Msg]]
-  def currentPlayerPromise: Promise[ActorRef[Msg]]
+  var players:Option[Map[ActorRef[Msg],Option[Code]]]
+  var currentPlayer: Future[ActorRef[Msg]]
+  var currentPlayerPromise: Promise[ActorRef[Msg]]
 
 
   def setupGame(codeLength:Int,players:Map[ActorRef[Msg],Option[Code]]):Unit
@@ -113,21 +113,21 @@ sealed trait Referee {
   }
 
   def refereeTurn() : Behavior[Msg] = {
-    nextPlayerTurn()
-    Behaviors.receive{
-      case (_,StopGameMsg()) => idle()
-      case (_,AllGuessesMsg(winner,guesses)) => if (checkWin(guesses)){
-        winner ! VictoryConfirmMsg(winner)
-        idle()
-      } else {
-        winner ! VictoryDenyMsg(winner)
-        players.get-=winner
-        Behaviors.same
+      nextPlayerTurn()
+      Behaviors.receive{
+        case (_,StopGameMsg()) => idle()
+        case (_,AllGuessesMsg(winner,guesses)) => if (checkWin(guesses)){
+          winner ! VictoryConfirmMsg(winner)
+          idle()
+        } else {
+          winner ! VictoryDenyMsg(winner)
+          players.get-winner
+          Behaviors.same
+        }
+        case (_,GuessResponseMsg(_,_,_)) => currentPlayerPromise.success(_); nextPlayerTurn(); Behaviors.same
+        case _ => Behaviors.same
       }
-      case (_,GuessResponseMsg(_,_,_)) => currentPlayerPromise.success(_); nextPlayerTurn(); Behaviors.same
-      case _ => Behaviors.same
     }
-  }
 }
 
 class RefereeImpl extends Referee{
@@ -167,7 +167,7 @@ class RefereeImpl extends Referee{
     val player  = futurePlayerTurn()
     try {
       import scala.concurrent.duration._
-      Await.result(currentPlayer, 10 second) //TODO FIX TIME
+      Await.result(currentPlayer, 10.second) //TODO FIX TIME
     } catch {
       case _: TimeoutException => player ! TurnEnd(player); currentPlayerPromise.failure(_);nextPlayerTurn()
     }
