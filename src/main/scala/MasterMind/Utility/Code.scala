@@ -20,7 +20,7 @@ class Code(/*codePoint: Int, pegs: Array[Int], code: String*/) {
   def getRange: Set[Code] = {
     var allCodes: Set[Code] = Set.empty
     for(i <- 0 to codeRange) {
-      allCodes ++= mutable.Set(new Code())
+      allCodes ++= mutable.Set(Code(i))
     }
     allCodes
   }
@@ -173,14 +173,17 @@ class CodeBreakerImpl extends CodeBreaker {
     bestGuess
   }
 
+  //TODO: Need to Test this function
   override def receiveKey(response: Response): Unit = {
     this.response = response
-    val iterator: Iterator[Code]  = possible.iterator
+    var copy = possible
+    val iterator: Iterator[Code]  = copy.iterator
     while(iterator.hasNext) {
       val i: Code = iterator.next()
       if(!lastGuess.getResponse(i).equals(response)) {
         impossible ++= List(i)
         //iterator.remove
+        copy -= i
       }
     }
   }

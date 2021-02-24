@@ -4,8 +4,10 @@ import java.awt.Color
 
 import javax.swing.border.LineBorder
 
+import scala.util.control.Exception.allCatch
+
 import scala.swing.event.ButtonClicked
-import scala.swing.{BoxPanel, Button, CheckBox, Dialog, Dimension, FlowPanel, Label, MainFrame, Orientation, TextArea, TextField}
+import scala.swing.{BoxPanel, Button, CheckBox, Dialog, Dimension, FlowPanel, GridPanel, Label, MainFrame, Orientation, TextArea, TextField}
 
 object GUI extends MainFrame {
 
@@ -22,16 +24,23 @@ object GUI extends MainFrame {
 }
 
 /**
- * Representing the initialize dialog before starting the game
+ * Representing the initial dialog before starting the game
  */
 class startingGameDialog extends Dialog {
   val numPlayers: TextField = new TextField(10)
   val numNumbers: TextField = new TextField(10)
   val humanCheck: CheckBox = new CheckBox("Do you want a human player? ")
-  val startButton: Button = new Button("START"){
+  val startButton: Button = new Button("START") {
     reactions += {
-      case ButtonClicked(_) => close()
-        Game(numPlayers.text.toInt).open()
+      case ButtonClicked(_) =>
+      isNumber(numPlayers.text) match {
+        case true => isNumber(numNumbers.text) match {
+          case true => close()
+            Game(numPlayers.text.toInt).open()
+          case _ => Dialog.showMessage(contents.head, "Select a valid n numbers to guess", "ERROR!", Dialog.Message.Info, null)
+        }
+        case _ => Dialog.showMessage(contents.head, "Select a valid number of player", "ERROR!", Dialog.Message.Info, null)
+      }
     }
   }
 
@@ -57,6 +66,8 @@ class startingGameDialog extends Dialog {
     super.closeOperation()
   }
 
+  def isNumber(s: String): Boolean = (allCatch opt s.toDouble).isDefined
+
   title = "Starting Game!"
   size = new Dimension(450, 150)
   this.peer.setLocationRelativeTo(null)
@@ -77,25 +88,25 @@ class GameBoard(nPlayers: Int) extends Dialog {
 
   val playerPanel = new BoxPanel(Orientation.Vertical)
 
-  //TODO: SISTEMARE BOIA
   for( i <- 0 until nPlayers) {
-    playerPanel.contents += new Label("Player " + i)
-    i match {
-      case 0 => playerPanel.contents += new Label("My turn")
-      case _ => playerPanel.contents += new Label("My turn") {
-        visible = false
-      }
+    playerPanel.contents += new GridPanel(1,2) {
+      contents += new Label("Player " + i)
+      i match {
+          case 0 => contents += new Label("My turn")
+          case _ => contents += new Label("My turn") {
+            visible = false
+          }
+        }
+      vGap = 10
     }
-    println("Hello Player " + i)
+    //println("Hello Player " + i)
   }
-
-
 
   contents = new BoxPanel(Orientation.Vertical) {
     contents ++= Seq(playerPanel, logChat)
   }
 
-  size = new Dimension(550, 300)
+  size = new Dimension(800, 400)
   this.peer.setLocationRelativeTo(null)
 
   override def closeOperation(): Unit = {
