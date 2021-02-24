@@ -193,21 +193,24 @@ object CodeBreakerImplObj {
 sealed trait CodeMaker {
   def setAnswer(): Unit
   def setAnswer(code: Code): Unit
-  def getAnswer: Code
-  def verify(guess: Code): Response
+  def getAnswer: Option[Code]
+  def verify(guess: Code): Option[Response]
 }
 
 class CodeMakerImpl extends CodeMaker {
 
-  var answer: Code = null
+  var answer: Option[Code] = None
 
-  override def setAnswer: Unit = answer = Code()
+  override def setAnswer(): Unit = this.answer = Some(Code())
 
-  override def setAnswer(code: Code): Unit = this.answer = code
+  override def setAnswer(code: Code): Unit = this.answer = Some(code)
 
-  override def getAnswer(): Code = answer
+  override def getAnswer: Option[Code] = answer
 
-  override def verify(guess: Code): Response = answer.getResponse(guess)
+  override def verify(guess: Code): Option[Response] = answer match {
+    case Some(value) => Some(value.getResponse(guess))
+    case _ => None
+  }
 }
 
 object CodeMakerImplObj {

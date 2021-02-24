@@ -159,8 +159,8 @@ class RefereeImpl extends Referee{
   override def checkWin(value: Map[ActorRef[Msg], Code]): Boolean = ???
 
   /**
-   * Tells to a player to start his turn and sets a timer that defines time in which a player has to make a guess
-   * if such guess isn't made, sends that user an end turn message, fails the promise of his turn and allows next
+   * Tells to a player to start his turn and sets a timer that defines time in which a player has to make a guess.
+   * If such guess isn't made, sends that user an end turn message, fails the promise of his turn and allows next
    * player to play his turn
    */
   override def nextPlayerTurn(): Unit = {
@@ -196,43 +196,42 @@ object Referee{
   def apply(): Behavior[Msg] = new RefereeImpl().idle()
 }
 
-object GameController {
-  def apply() : Behavior[Msg] = Behaviors.setup(context => new noGameController(context))
-}
+class GameController {
+  var referee: Option[ActorRef[Msg]] = None
 
-class noGameController(context: ActorContext[Msg]) extends AbstractBehavior[Msg](context) {
   // No game behavior
-
-  override def onMessage(msg: Msg): Behavior[Msg] = msg match {
+  def noGameBehavior(): Behavior[Msg] = Behaviors.receive {
     // Initialize game msg
-    case msg: InitializeControllerMsg =>
-      val referee: ActorRef[Msg] =  context.spawn(Referee(), "Referee")//TODO CHECK
+    case (context, msg: InitializeControllerMsg) =>
+      referee = Some(context.spawn(Referee(), "Referee"))//TODO CHECK
 
       // If Human Player is set, create N - 1 AIPlayers
       var playersList: List[ActorRef[Msg]] = List.tabulate(if(msg.getHuman) msg.getPlayers - 1 else msg.getPlayers)(n => context.spawn(AIPlayer(), "Player" + n))
       if (msg.getHuman) playersList = context.spawn(UserPlayer(), "HumanPlayer") :: playersList
 
-      referee ! StartGameMsg(msg.getLength, msg.getResponses, playersList.map(_ -> Option.empty).toMap)
+      referee.get ! StartGameMsg(msg.getLength, msg.getResponses, playersList.map(_ -> Option.empty).toMap)
       GUI.logChat("The game has started")
 
-      new inGameController(context, referee)
+      inGameBehavior()
 
     case _ =>
       GUI.logChat("Controller received an unexpected Msg")
       Behaviors.same
   }
-}
 
-class inGameController(context: ActorContext[Msg], referee: ActorRef[Msg]) extends AbstractBehavior[Msg](context) {
   // Game running Behavior
-
-  override def onMessage(msg: Msg): Behavior[Msg] = msg match {
-    case msg: StopGameMsg =>
+  def inGameBehavior(): Behavior[Msg] = Behaviors.receive {
+    case (_, msg: StopGameMsg) =>
       //Terminate game
-      referee ! msg
-      GUI.logChat("The game has been stopped")
-      new noGameController(context)
-    case msg: Msg =>
+      if(referee.isDefined) {
+        referee.get ! msg
+        GUI.logChat("The game has been stopped")
+        noGameBehavior()
+      } else {
+        GUI.logChat("Critical error: Referee Not initialized")
+        Behaviors.same
+      }
+    case (_, msg: Msg) =>
       logChat(msg)
       Behaviors.same
     case _ =>
@@ -253,4 +252,8 @@ class inGameController(context: ActorContext[Msg], referee: ActorRef[Msg]) exten
     case msg : VictoryDenyMsg => GUI.logChat(msg.getPlayer + " failed miserably his attempt at winning the game.")
     case _ => GUI.logChat("Controller received an unexpected Msg")
   }
+}
+
+object GameController {
+  def apply() : Behavior[Msg] = new GameController().noGameBehavior()
 }
