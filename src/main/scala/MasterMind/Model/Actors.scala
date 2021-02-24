@@ -1,18 +1,21 @@
 package MasterMind.Model
-
 import MasterMind.Utility._
 import MasterMind.View.GUI
 import akka.actor.typed.scaladsl.{AbstractBehavior, ActorContext, Behaviors}
 import akka.actor.typed.{ActorRef, Behavior}
+import akka.remote.WireFormats.FiniteDuration
 
+import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.{Await, Future, Promise, TimeoutException}
-
-
+import scala.util.Success
+import scala.concurrent.ExecutionContext.Implicits.global
+object Timeout {
+  final val timeout = 10
+}
 /**
  * Two type of players involved : AI players & human player, they're represented as FSM
  */
 sealed trait Player {
-
   def myCode: Code
   def codeBreaker : CodeBreakerImpl
   def respond(player:ActorRef[Msg] ,guess:Code): Unit
@@ -94,9 +97,9 @@ sealed trait Referee {
   def checkWin(value: Map[ActorRef[Msg],Code]): Boolean
   /**Allows a player to play his turn*/
   def nextPlayerTurn():Unit
+  def playerOut(player: ActorRef[Msg]):Unit
   var players:Option[Map[ActorRef[Msg],Option[Code]]]
-  var currentPlayer: Future[ActorRef[Msg]]
-  var currentPlayerPromise: Promise[ActorRef[Msg]]
+  def playerTurnEnd():Unit
 
 
   def setupGame(codeLength:Int,players:Map[ActorRef[Msg],Option[Code]]):Unit
@@ -121,10 +124,10 @@ sealed trait Referee {
           idle()
         } else {
           winner ! VictoryDenyMsg(winner)
-          players.get-winner
+          playerOut(winner)
           Behaviors.same
         }
-        case (_,GuessResponseMsg(_,_,_)) => currentPlayerPromise.success(_); nextPlayerTurn(); Behaviors.same
+        case (_,GuessResponseMsg(_,_,_)) => playerTurnEnd(); /*nextPlayerTurn();*/ Behaviors.same
         case _ => Behaviors.same
       }
     }
@@ -132,10 +135,16 @@ sealed trait Referee {
 
 class RefereeImpl extends Referee{
    var codeLength: Option[Int]= Option.empty
-  override var players: Option[Map[ActorRef[Msg], Option[Code]]]= Option.empty
-  override var currentPlayer: Future[ActorRef[Msg]] = _
-  override var currentPlayerPromise: Promise[ActorRef[Msg]] = _
+   override var players: Option[Map[ActorRef[Msg], Option[Code]]]= Option.empty
+
+   var currentPlayerTurn: Future[Unit] = _
+   var currentPlayerPromise: Promise[Unit] = _
    var turnManager: TurnManager = TurnManager()
+
+  currentPlayerTurn.onComplete {
+    case Success(_) => println("Player guessed")
+    case _ => println("Player faield to guess in time")
+  }
 
   /** Generates player codes
    *
@@ -165,13 +174,15 @@ class RefereeImpl extends Referee{
    */
   override def nextPlayerTurn(): Unit = {
     val player  = futurePlayerTurn()
+    player ! YourTurnMsg(player)
     try {
       import scala.concurrent.duration._
-      Await.result(currentPlayer, 10.second) //TODO FIX TIME
+      Await.result(currentPlayerTurn, Timeout.timeout.seconds)
     } catch {
-      case _: TimeoutException => player ! TurnEnd(player); currentPlayerPromise.failure(_);nextPlayerTurn()
+      case _: TimeoutException => player ! TurnEnd(player); currentPlayerPromise.failure(_); refereeTurn()
     }
   }
+
 
   /**
    * tells a player to start his turn and sets two variables to check if he made a guessor if
@@ -179,11 +190,9 @@ class RefereeImpl extends Referee{
    * @return
    */
   def futurePlayerTurn() :ActorRef[Msg]= {
-    currentPlayerPromise = Promise[ActorRef[Msg]]()
-    val nextPlayer = turnManager.nextPlayer
-    nextPlayer ! YourTurnMsg(nextPlayer)
-    currentPlayer=currentPlayerPromise.future
-    nextPlayer
+    currentPlayerPromise = Promise[Unit]
+    currentPlayerTurn=currentPlayerPromise.future
+    turnManager.nextPlayer
   }
 
   override def setupGame(cLength: Int,newPlayers: Map[ActorRef[Msg], Option[Code]]): Unit = {
@@ -191,6 +200,10 @@ class RefereeImpl extends Referee{
     players = Option(newPlayers)
     turnManager.setPlayers(newPlayers.keySet.toSeq)
   }
+
+  override def playerOut(player: ActorRef[Msg]): Unit = {players.get-player; println("Player failed to win, removing him, now players size = "+players.size); turnManager.removePlayer(player)}
+
+  override def playerTurnEnd(): Unit = currentPlayerPromise.success(()=>Unit)
 }
 object Referee{
   def apply(): Behavior[Msg] = new RefereeImpl().idle()
