@@ -1,25 +1,27 @@
 package MasterMind.Model
 import MasterMind.Utility._
 import MasterMind.View.GUI
-import akka.actor.typed.scaladsl.{AbstractBehavior, ActorContext, Behaviors}
+import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.{ActorRef, Behavior}
-import akka.remote.WireFormats.FiniteDuration
-
-import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.{Await, Future, Promise, TimeoutException}
-import scala.util.Success
-import scala.concurrent.ExecutionContext.Implicits.global
+
 object Timeout {
   final val timeout = 10
+}
+
+sealed trait Player {
+  def idle():Behavior[Msg]
+  def waitTurn(mySecretNumber:Code):Behavior[Msg]
+  def myTurn(mySecretNumber:Code):Behavior[Msg]
 }
 /**
  * Two type of players involved : AI players & human player, they're represented as FSM
  */
-sealed trait Player {
-  def myCode: Code
-  def codeBreaker : CodeBreakerImpl
+abstract class Players extends Player{
   def respond(player:ActorRef[Msg] ,guess:Code): Unit
   def guess(): Unit
+  def setupCode(codeLength:Int,opponents: Map[ActorRef[Msg],(Code,Boolean)]):Unit
+  def myOpponents:Map[ActorRef[Msg],(Code,Boolean)]
 
   /**
    * Player's secret number, evaluated once on first invocation
@@ -28,9 +30,12 @@ sealed trait Player {
     /**
      * First state: idle
      */
-  def idle() : Behavior[Msg] = {
+  override def idle() : Behavior[Msg] = {
+    println("Hey I'm an actor and I've been spawned!")
     Behaviors.receive{
-      case (_,StartGameMsg(_,_,_)) =>  /*generate random number*/ waitTurn(null/*NEED TO declare new code*/)
+      case (_,StartGameMsg(codeLength,_,opponents)) => setupCode(codeLength,opponents map {
+        case (actor,code) => (actor,(code.get -> false))
+      }); waitTurn(null/*NEED TO declare new code*/)
       case _ => Behaviors.same
     }
   }
@@ -40,10 +45,9 @@ sealed trait Player {
    * @param mySecretNumber my secret number
    * @return //
    */
-  def waitTurn(mySecretNumber:Code): Behavior[Msg] = Behaviors.receive{
+   def waitTurn(mySecretNumber:Code): Behavior[Msg] = Behaviors.receive{
       case (_,_ : YourTurnMsg) =>  myTurn(mySecretNumber)
       case (_, GuessMsg(actor,code)) => respond(actor,code); Behaviors.same
-      case (_, GuessResponseMsg(player, guess, response)) => /*should update list of other guesses*/ Behaviors.same
       case _ => Behaviors.same
   }
 
@@ -55,27 +59,55 @@ sealed trait Player {
   def myTurn(mySecretNumber:Code): Behavior[Msg] = {
     guess()
     Behaviors.receive{
-      case (_, GuessResponseMsg(player, guess, response)) =>/*should update list of my guesses*/ /*send turn end*/waitTurn(mySecretNumber)
-      case (_,_:VictoryConfirmMsg) => /*I WON*/ idle()
+      case (_, GuessResponseMsg(player, guess, response)) =>/*check if I got his numer right*/ /*send turn end*/waitTurn(mySecretNumber)
+      case (_,_:VictoryConfirmMsg) => /*I WON*/ idle() //TODO
       case _ => Behaviors.same
     }
   }
 }
 
-class UserPlayer extends Player {
-  override def myCode: Code = ???
-  override def codeBreaker: CodeBreakerImpl = ???
+class UserPlayer extends Players {
+  var myCode: Code = _
+  var codeBreaker: CodeBreakerImpl = _
+  var myOpponents:Map[ActorRef[Msg],(Code,Boolean)] = Map.empty
+
   override def respond(player: ActorRef[Msg], guess: Code): Unit = ???
-  override def guess(): Unit =  ???
+  override def guess(): Unit = {
+    codeBreaker.guess
+  }
+
+  override def setupCode(codeLength: Int, opponents:Map[ActorRef[Msg],(Code,Boolean)]): Unit = {
+    myCode = Code(codeLength)
+    codeBreaker = CodeBreakerImplObj()
+    myOpponents = opponents
+
+  }
 }
+
 object UserPlayer {
   def apply(): Behavior[Msg] = new UserPlayer().idle()
 }
-class AIPlayer extends Player {
-  override def myCode: Code = ???
-  override def codeBreaker: CodeBreakerImpl = ???
+class AIPlayer extends Players {
+  var myCode: Code = ???
+  var codeBreaker: CodeBreakerImpl = ???
+  var myOpponents:Map[ActorRef[Msg],(Code,Boolean)] = Map.empty
+
   override def respond(player: ActorRef[Msg], guess: Code): Unit = ???
-  override def guess(): Unit = ???
+  override def guess(): Unit = {
+    val target = myOpponents.find(x=> !x._2._2)
+    if (target.isDefined){
+      //target.get._1 ! GuessMsg(_,codeBreaker.guess) //TODO CHECK AUTO REFERENCE
+    }else{
+      //referee ! AllGuessesMsg(_,m) //TODO SEND TRY TO WIN MSG
+    }
+  }
+
+  override def setupCode(codeLength: Int,opponents:Map[ActorRef[Msg],(Code,Boolean)]): Unit = {
+    myCode = Code(codeLength)
+    codeBreaker = CodeBreakerImplObj()
+    myOpponents = opponents
+  }
+
 }
 object AIPlayer {
   def apply(): Behavior[Msg] = new AIPlayer().idle()
@@ -107,10 +139,17 @@ sealed trait Referee {
    *w
    */
   def idle() : Behavior[Msg] = {
+    println("Referee has been spawned!")
     Behaviors.receive{
       case (_,StartGameMsg(newCodeLength, _, newPlayers)) =>
         setupGame(newCodeLength,newPlayers)
-        refereeTurn()
+        Behaviors.setup(context => {
+          for ( i <- 0 until newPlayers.size-1 ){
+            context.spawn(AIPlayer(),"Player"+i)
+            println("SPawned actor"+i)
+          }
+          refereeTurn()
+        })
       case _ => Behaviors.same
     }
   }
@@ -141,10 +180,7 @@ class RefereeImpl extends Referee{
    var currentPlayerPromise: Promise[Unit] = _
    var turnManager: TurnManager = TurnManager()
 
-  currentPlayerTurn.onComplete {
-    case Success(_) => println("Player guessed")
-    case _ => println("Player faield to guess in time")
-  }
+
 
   /** Generates player codes
    *
@@ -175,6 +211,7 @@ class RefereeImpl extends Referee{
   override def nextPlayerTurn(): Unit = {
     val player  = futurePlayerTurn()
     player ! YourTurnMsg(player)
+
     try {
       import scala.concurrent.duration._
       Await.result(currentPlayerTurn, Timeout.timeout.seconds)
@@ -190,7 +227,7 @@ class RefereeImpl extends Referee{
    * @return
    */
   def futurePlayerTurn() :ActorRef[Msg]= {
-    currentPlayerPromise = Promise[Unit]
+    currentPlayerPromise = Promise[Unit]()
     currentPlayerTurn=currentPlayerPromise.future
     turnManager.nextPlayer
   }
@@ -203,7 +240,7 @@ class RefereeImpl extends Referee{
 
   override def playerOut(player: ActorRef[Msg]): Unit = {players.get-player; println("Player failed to win, removing him, now players size = "+players.size); turnManager.removePlayer(player)}
 
-  override def playerTurnEnd(): Unit = currentPlayerPromise.success(()=>Unit)
+  override def playerTurnEnd(): Unit = currentPlayerPromise.success(()=>())
 }
 object Referee{
   def apply(): Behavior[Msg] = new RefereeImpl().idle()
