@@ -143,13 +143,14 @@ sealed trait Referee {
     Behaviors.receive{
       case (_,StartGameMsg(newCodeLength, _, newPlayers)) =>
         setupGame(newCodeLength,newPlayers)
-        Behaviors.setup(context => {
+        /*Behaviors.setup(context => {
           for ( i <- 0 until newPlayers.size-1 ){
             context.spawn(AIPlayer(),"Player"+i)
             println("SPawned actor"+i)
           }
           refereeTurn()
-        })
+        })*/
+        refereeTurn()
       case _ => Behaviors.same
     }
   }
