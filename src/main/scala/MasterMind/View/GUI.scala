@@ -14,6 +14,7 @@ import scala.swing.{BoxPanel, Button, CheckBox, Dialog, Dimension, FlowPanel, Gr
 object GUI extends MainFrame {
 
   val gameSystem = ActorSystem(GameController(), "GameSystem")
+  val gameBoard = Game()
 
   def top: MainFrame = new MainFrame() {
     startGame().open()
@@ -23,7 +24,9 @@ object GUI extends MainFrame {
     super.closeOperation()
   }
 
-  def logChat(msg: String) : Unit = {}
+  def logChat(msg: String) : Unit = {
+    gameBoard.logChat.text += "\n> " + msg
+  }
 
 }
 
@@ -41,7 +44,7 @@ class startingGameDialog extends Dialog {
         case true => isNumber(textCodeLength.text) match {
           case true => close()
             GUI.gameSystem ! InitializeControllerMsg(numPlayers.text.toInt,textCodeLength.text.toInt,withHuman = false,sharedResponses = false)
-            Game(numPlayers.text.toInt).open()
+            GUI.gameBoard.open()
           case _ => Dialog.showMessage(contents.head, "Select a valid code's length", "ERROR!", Dialog.Message.Info, null)
         }
         case _ => Dialog.showMessage(contents.head, "Select a valid number of player", "ERROR!", Dialog.Message.Info, null)
@@ -69,11 +72,12 @@ class startingGameDialog extends Dialog {
 
   override def closeOperation(): Unit = {
     super.closeOperation()
+    System.exit(0)
   }
 
   def isNumber(s: String): Boolean = (allCatch opt s.toDouble).isDefined
 
-  title = "Starting Game!"
+  title = "Selecting parameters"
   size = new Dimension(450, 150)
   this.peer.setLocationRelativeTo(null)
 }
@@ -86,10 +90,12 @@ object startGame {
 /**
  * Representing the Mastermind's board
  */
-class GameBoard(nPlayers: Int) extends Dialog {
+class GameBoard() extends Dialog {
   val logChat: TextArea = new TextArea("GAME IS STARTED!")
   logChat.editable = false
   logChat.border = new LineBorder(Color.BLACK, 2)
+
+  title = "Mastermind's GameBoard"
 
   /*
   val playerPanel = new BoxPanel(Orientation.Vertical)
@@ -113,16 +119,17 @@ class GameBoard(nPlayers: Int) extends Dialog {
     contents ++= Seq(logChat)
   }
 
-  size = new Dimension(800, 400)
+  size = new Dimension(600, 450)
   this.peer.setLocationRelativeTo(null)
 
   override def closeOperation(): Unit = {
     super.closeOperation()
+    System.exit(0)
   }
 }
 
 object Game extends {
-  def apply(nPlayers: Int): GameBoard = new GameBoard(nPlayers)
+  def apply(): GameBoard = new GameBoard()
 }
 
 
