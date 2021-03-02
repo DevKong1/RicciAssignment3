@@ -140,8 +140,8 @@ sealed trait CodeBreaker {
 
 class CodeBreakerImpl extends CodeBreaker {
 
-  var response: Response = null
-  var lastGuess: Code = null
+  var response: Response = _
+  var lastGuess: Code = _
 
   var impossible: List[Code] = List.empty
   var possible: Set[Code] = Set.empty
