@@ -86,7 +86,7 @@ case class StartGameMsg(private val codeLength: Int, private val sendGuessToOthe
 }
 
 object StartGameMsg {
- def apply(codeLength: Int, sendGuessToOthers: Boolean, players: List[ActorRef[Msg]]): StartGameMsg = new StartGameMsg(codeLength, sendGuessToOthers, players)
+ def apply(codeLength: Int, sendGuessToOthers: Boolean, players: List[ActorRef[Msg]], referee: ActorRef[Msg]): StartGameMsg = new StartGameMsg(codeLength, sendGuessToOthers, players, referee)
 }
 
 case class StopGameMsg() extends Msg {
