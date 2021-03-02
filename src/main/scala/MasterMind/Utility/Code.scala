@@ -176,7 +176,7 @@ class CodeBreakerImpl extends CodeBreaker {
   //TODO: Need to Test this function
   override def receiveKey(response: Response): Unit = {
     this.response = response
-    val iterator: Iterator[Code]  = possible.iterator
+    val iterator: Iterator[Code] = possible.iterator
     while(iterator.hasNext) {
       val i: Code = iterator.next()
       if(!lastGuess.getResponse(i).equals(response)) {
