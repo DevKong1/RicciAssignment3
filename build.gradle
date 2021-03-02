@@ -27,6 +27,7 @@ dependencies {
     //compile "io.aeron:aeron-driver:1.27.0"
     //compile "io.aeron:aeron-client:1.27.0"
 
+    compile "org.slf4j:slf4j-simple:1.7.30"
 
     // Test
     testImplementation 'junit:junit:4.13'

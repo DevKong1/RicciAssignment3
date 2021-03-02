@@ -52,7 +52,7 @@ class Code(/*codePoint: Int, pegs: Array[Int], code: String*/) {
   def toPegs(codePoint: Int): Array[Int] = {
     val output: Array[Int] = new Array[Int](codeLength)
     var cP: Int = codePoint
-    for(i <- 0 to codeLength) {
+    for(i <- 0 until codeLength) {
       output(i) = codePoint % codeRadix
       cP /= codeRadix
     }
