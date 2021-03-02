@@ -102,7 +102,7 @@ class AIPlayer extends Players {
     if (target.isDefined){
       target.get._1 ! GuessMsg(self,codeBreaker.guess)
     }else{
-      referee ! AllGuessesMsg(self,myOpponents map  { case (actor, code -> _) => actor->code })
+//      referee ! AllGuessesMsg(self,myOpponents map  { case (actor, code -> _) => actor->code })
     }
   }
 
@@ -258,7 +258,7 @@ class GameController {
       var playersList: List[ActorRef[Msg]] = List.tabulate(if(msg.getHuman) msg.getPlayers - 1 else msg.getPlayers)(n => context.spawn(AIPlayer(), "Player" + n))
       if (msg.getHuman) playersList = context.spawn(UserPlayer(), "HumanPlayer") :: playersList
 
-      referee.get ! StartGameMsg(msg.getLength, msg.getResponses, playersList.map(_ -> Option.empty).toMap)
+      referee.get ! StartGameMsg(msg.getLength, msg.getResponses, playersList, referee)
       GUI.logChat("The game has started")
 
       inGameBehavior()

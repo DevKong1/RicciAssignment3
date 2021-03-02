@@ -7,6 +7,6 @@ class ControllerTest extends AnyFunSuite {
   test("Controller is setup correctly") {
     val gameController = GameController()
     println(gameController)
-    assert(GameController != null)
+    assert(gameController != null)
   }
 }
