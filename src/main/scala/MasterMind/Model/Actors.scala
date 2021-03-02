@@ -9,20 +9,21 @@ object Timeout {
   final val timeout = 10
 }
 
-sealed trait Player {
-  def idle():Behavior[Msg]
-  def waitTurn(mySecretNumber:Code):Behavior[Msg]
-  def myTurn(mySecretNumber:Code):Behavior[Msg]
+sealed trait Player[T,K] {
+  def idle():Behavior[T]
+  def waitTurn(mySecretNumber:K):Behavior[T]
+  def myTurn(mySecretNumber:K):Behavior[T]
 }
 /**
  * Two type of players involved : AI players & human player, they're represented as FSM
  */
-abstract class Players extends Player{
+abstract class Players extends Player[Msg,Code]{
   def respond(player:ActorRef[Msg] ,guess:Code): Unit
   def guess(): Unit
   def setupCode(codeLength:Int,opponents: Map[ActorRef[Msg],(Code,Boolean)]):Unit
   def myOpponents:Map[ActorRef[Msg],(Code,Boolean)]
-
+  def myCode: Code
+  def codeBreaker: CodeBreakerImpl
   /**
    * Player's secret number, evaluated once on first invocation
    *
@@ -35,7 +36,7 @@ abstract class Players extends Player{
     Behaviors.receive{
       case (_,StartGameMsg(codeLength,_,opponents)) => setupCode(codeLength,opponents map {
         case (actor,code) => (actor,(code.get -> false))
-      }); waitTurn(null/*NEED TO declare new code*/)
+      }); waitTurn(myCode)
       case _ => Behaviors.same
     }
   }
@@ -59,7 +60,7 @@ abstract class Players extends Player{
   def myTurn(mySecretNumber:Code): Behavior[Msg] = {
     guess()
     Behaviors.receive{
-      case (_, GuessResponseMsg(player, guess, response)) =>/*check if I got his numer right*/ /*send turn end*/waitTurn(mySecretNumber)
+      case (_, GuessResponseMsg(player, guess, response)) => /*check if I got his numer right*/ /*send turn end*/waitTurn(mySecretNumber)
       case (_,_:VictoryConfirmMsg) => /*I WON*/ idle() //TODO
       case _ => Behaviors.same
     }
@@ -67,9 +68,9 @@ abstract class Players extends Player{
 }
 
 class UserPlayer extends Players {
-  var myCode: Code = _
-  var codeBreaker: CodeBreakerImpl = _
-  var myOpponents:Map[ActorRef[Msg],(Code,Boolean)] = Map.empty
+  override var myCode: Code = _
+  override var codeBreaker: CodeBreakerImpl = _
+  override var myOpponents:Map[ActorRef[Msg],(Code,Boolean)] = Map.empty
 
   override def respond(player: ActorRef[Msg], guess: Code): Unit = ???
   override def guess(): Unit = {
