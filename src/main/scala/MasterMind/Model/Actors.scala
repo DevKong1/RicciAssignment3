@@ -256,16 +256,23 @@ object Referee{
 
 class GameController {
   var referee: Option[ActorRef[Msg]] = None
+  println("Initialized controller") //TODO JUST DEBUG MSG
 
   // No game behavior
   def noGameBehavior(): Behavior[Msg] = Behaviors.receive {
     // Initialize game msg
     case (context, msg: InitializeControllerMsg) =>
+      println("Received Init Msg") //TODO JUST DEBUG MSG
+
       referee = Some(context.spawn(Referee(), "Referee"))//TODO CHECK
+
+      println("Referee ok") //TODO JUST DEBUG MSG
 
       // If Human Player is set, create N - 1 AIPlayers
       var playersList: List[ActorRef[Msg]] = List.tabulate(if(msg.getHuman) msg.getPlayers - 1 else msg.getPlayers)(n => context.spawn(AIPlayer(), "Player" + n))
       if (msg.getHuman) playersList = context.spawn(UserPlayer(), "HumanPlayer") :: playersList
+
+      println("Created players: " + playersList) //TODO JUST DEBUG MSG
 
       referee.get ! StartGameMsg(msg.getLength, msg.getResponses, playersList, referee.get)
       GUI.logChat("The game has started")
