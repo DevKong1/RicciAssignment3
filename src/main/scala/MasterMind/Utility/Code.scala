@@ -83,7 +83,7 @@ class Code(/*codePoint: Int, pegs: Array[Int], code: String*/) {
     Response(black, white)
   }
 
-  override def hashCode(): Int = codePoint
+  override def hashCode(): Int = this.codePoint
 
   override def equals(obj: Any): Boolean = {
     if (this eq obj.asInstanceOf[Object]) return true
@@ -176,14 +176,13 @@ class CodeBreakerImpl extends CodeBreaker {
   //TODO: Need to Test this function
   override def receiveKey(response: Response): Unit = {
     this.response = response
-    var copy = possible
-    val iterator: Iterator[Code]  = copy.iterator
+    val iterator: Iterator[Code]  = possible.iterator
     while(iterator.hasNext) {
       val i: Code = iterator.next()
       if(!lastGuess.getResponse(i).equals(response)) {
         impossible ++= List(i)
         //iterator.remove
-        copy -= i
+        possible -= i
       }
     }
   }
