@@ -20,15 +20,17 @@ sealed trait Player[T,K] {
   def myTurn(mySecretNumber:K):Behavior[T]
   def referee:ActorRef[T]
 }
+
 /**
  * Two type of players involved : AI players & human player, they're represented as FSM
  */
 abstract class Players extends Player[Msg,Code]{
 
-  def respond(player:ActorRef[Msg] ,guess:Code): Unit
+  def respond(self:ActorRef[Msg],player:ActorRef[Msg] ,guess:Code): Unit
   def guess(self:ActorRef[Msg]): Unit
   def setupCode(codeLength:Int,opponents: List[ActorRef[Msg]],referee:ActorRef[Msg]):Unit
 
+  var referee:ActorRef[Msg]
   var myOpponents:Map[ActorRef[Msg],(Code,Boolean)]
   var myCode: Code
   var codeBreaker: CodeBreakerImpl
@@ -53,7 +55,7 @@ abstract class Players extends Player[Msg,Code]{
    */
    def waitTurn(mySecretNumber:Code): Behavior[Msg] = Behaviors.receive{
       case (_,_ : YourTurnMsg) =>  myTurn(mySecretNumber)
-      case (_, GuessMsg(actor,code)) => respond(actor,code); Behaviors.same
+      case (ctx, GuessMsg(actor,code)) => respond(ctx.self,actor,code); Behaviors.same
       case _ => Behaviors.same
   }
 
@@ -65,12 +67,17 @@ abstract class Players extends Player[Msg,Code]{
   def myTurn(mySecretNumber:Code): Behavior[Msg] = Behaviors.setup { ctx =>
       guess(ctx.self)
       Behaviors.receive {
-        case (_, GuessResponseMsg(player, guess, response)) => if(response.isCorrect){
-          codeBreaker = CodeBreakerImplObj()
+        case (ctx, GuessResponseMsg(player, _, response)) => if(response.isCorrect){
+          if(myOpponents.values.map(_._2).reduce(_&_)){
+            referee ! AllGuessesMsg(ctx.self,myOpponents.map(x=> x._1 -> x._2._1))
+          }else{
+            codeBreaker = CodeBreakerImplObj()
+            myOpponents.find(_._1 equals player).map(player => player._2._2) //TODO check if such change is reflected into myOpponents
+          }
         }else{
-
+          codeBreaker.receiveKey(response)
         }; waitTurn(mySecretNumber)
-        case (_, _: VictoryConfirmMsg) => /*I WON*/ idle(); //TODO
+        case (_, _: VictoryConfirmMsg) => println("I WON!"); idle(); //TODO
         case _ => Behaviors.same
       }
     }
@@ -80,9 +87,11 @@ class UserPlayer extends Players {
   override var myCode: Code = _
   override var codeBreaker: CodeBreakerImpl = _
   override var myOpponents:Map[ActorRef[Msg],(Code,Boolean)] = Map.empty
-  override var referee: ActorRef[Msg] = _
+   var referee: ActorRef[Msg] = _
 
-  override def respond(player: ActorRef[Msg], guess: Code): Unit = ???
+  override def respond(self:ActorRef[Msg],player: ActorRef[Msg], guess: Code): Unit = {
+    //TODO HANDLE GUI
+  }
   override def guess(self:ActorRef[Msg]): Unit = {
     //TODO HANDLE GUI
   }
@@ -98,13 +107,14 @@ class UserPlayer extends Players {
 object UserPlayer {
   def apply(): Behavior[Msg] = new UserPlayer().idle()
 }
+
 class AIPlayer extends Players {
   override var myCode: Code = _
   override var codeBreaker: CodeBreakerImpl = _
   override var myOpponents:Map[ActorRef[Msg],(Code,Boolean)] = Map.empty
-  override var referee: ActorRef[Msg] = _
+   var referee: ActorRef[Msg] = _
 
-  override def respond(player: ActorRef[Msg], guess: Code): Unit = ???
+  override def respond(self:ActorRef[Msg],player: ActorRef[Msg], guess: Code): Unit = player ! GuessResponseMsg(self,guess,myCode.getResponse(guess))
 
   override def guess(self: ActorRef[Msg]): Unit = {
     val target = myOpponents.find(x=> !x._2._2)
@@ -155,7 +165,7 @@ sealed trait Referee {
   def idle() : Behavior[Msg] = {
     println("Referee has been spawned!")
     Behaviors.receive{
-      case (_,StartGameMsg(newCodeLength, _, newPlayers,ref)) =>
+      case (_,StartGameMsg(newCodeLength, _, newPlayers,_)) =>
         setupGame(newCodeLength,newPlayers)
         refereeTurn()
       case _ => Behaviors.same
