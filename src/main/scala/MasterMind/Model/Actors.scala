@@ -21,9 +21,9 @@ abstract class Players extends Player[Msg,Code]{
   def respond(player:ActorRef[Msg] ,guess:Code): Unit
   def guess(): Unit
   def setupCode(codeLength:Int,opponents: Map[ActorRef[Msg],(Code,Boolean)]):Unit
-  def myOpponents:Map[ActorRef[Msg],(Code,Boolean)]
-  def myCode: Code
-  def codeBreaker: CodeBreakerImpl
+  var myOpponents:Map[ActorRef[Msg],(Code,Boolean)]
+  var myCode: Code
+  var codeBreaker: CodeBreakerImpl
   /**
    * Player's secret number, evaluated once on first invocation
    *
