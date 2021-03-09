@@ -2,7 +2,7 @@ package MasterMind.Utility
 
 import akka.actor.typed.ActorRef
 
-sealed trait Msg {
+ trait Msg {
 }
 
 //

@@ -3,7 +3,11 @@ import MasterMind.Utility._
 import MasterMind.View.GUI
 import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.{ActorRef, Behavior}
+import akka.util.Timeout
+
+import scala.concurrent.duration._
 import scala.concurrent.{Await, Future, Promise, TimeoutException}
+import scala.util.{Failure, Success}
 
 object Timeout {
   final val timeout = 10
@@ -42,9 +46,11 @@ abstract class Players extends Player[Msg,Code]{
   override def idle() : Behavior[Msg] = {
     println("Hey I'm an actor and I've been spawned!")
     Behaviors.receive{
-      case (ctx,StartGameMsg(codeLength,_,opponents,ref)) => setupCode(codeLength,opponents.filter(x => x != ctx.self),ref); waitTurn(myCode);
+      case (ctx,StartGameMsg(codeLength,_,opponents,ref)) =>
+        setupCode(codeLength, opponents.filter(x => x != ctx.self), ref)
+        waitTurn(myCode);
       case _ => Behaviors.same
-      }
+    }
 
   }
 
@@ -136,33 +142,33 @@ class AIPlayer extends Players {
 object AIPlayer {
   def apply(): Behavior[Msg] = new AIPlayer().idle()
 }
+sealed trait Referee[T,K]{
+  def idle():Behavior[T]
+  def refereeTurn():Behavior[T]
+  def winCheckRoutine(winner:ActorRef[T],players: Map[ActorRef[T],K]) :Behavior[T]
+  def players:Option[Map[ActorRef[T],Option[K]]]
+}
 /**
  * Game's corrupted referee
  */
-sealed trait Referee {
+abstract class AbstractReferee extends Referee[Msg,Code] {
 
   /** Generates player codes
    *
    * @return true if codes have been set, false if they already were set
    * */
   def generateCodes(): Boolean
-  /**
-   * Check if a player actually won
-   * @param value values to check
-   */
-  def checkWin(value: Map[ActorRef[Msg],Code]): Boolean
   /**Allows a player to play his turn*/
   def nextPlayerTurn():Unit
   def playerOut(player: ActorRef[Msg]):Unit
   var players:Option[Map[ActorRef[Msg],Option[Code]]]
+
   def playerTurnEnd():Unit
-
-
   def setupGame(codeLength:Int,players:List[ActorRef[Msg]]):Unit
   /**
-   *w
+   *
    */
-  def idle() : Behavior[Msg] = {
+  override def idle() : Behavior[Msg] = {
     println("Referee has been spawned!")
     Behaviors.receive{
       case (_,StartGameMsg(newCodeLength, _, newPlayers,_)) =>
@@ -172,30 +178,59 @@ sealed trait Referee {
     }
   }
 
-  def refereeTurn() : Behavior[Msg] = {
+  override def refereeTurn() : Behavior[Msg] = {
       nextPlayerTurn()
       Behaviors.receive{
         case (_,StopGameMsg()) => idle()
-        case (_,AllGuessesMsg(winner,guesses)) => if (checkWin(guesses)){
-          winner ! VictoryConfirmMsg(winner)
-          idle()
-        } else {
-          winner ! VictoryDenyMsg(winner)
-          playerOut(winner)
-          Behaviors.same
-        }
-        case (_,GuessResponseMsg(_,_,_)) => playerTurnEnd(); /*nextPlayerTurn();*/ Behaviors.same
+        case (_,AllGuessesMsg(winner,guesses)) => winCheckRoutine(winner,guesses)
         case _ => Behaviors.same
       }
     }
+
+  /**
+   *  Checks if a player has won by interacting with any other player asking them their secret code (via "Ask Pattern"
+   *  https://doc.akka.io/docs/akka/current/typed/interaction-patterns.html#request-response-with-ask-from-outside-an-actor
+   *  )
+   * @param winner actor who claims to have won
+   * @param players list of other players and their alleged secret code
+   * @return //
+   */
+  override def winCheckRoutine(winner:ActorRef[Msg],players: Map[ActorRef[Msg], Code]): Behavior[Msg] = Behaviors.setup{ ctx =>
+    implicit val timeout: Timeout = 10.seconds
+    case class AdaptedResponse(message: String) extends Msg
+
+
+    ctx.ask[Msg,Msg](players.keySet.head, ref => GuessMsg(ref,players.values.head)){
+      case Success(c: GuessResponseMsg) => c
+      case Failure(_) => AdaptedResponse("Failure")
+    }
+
+    Behaviors.receive{
+      case (_,GuessResponseMsg(player,_,response)) =>
+        if(response.isCorrect){
+          if(players.size == 1){
+            winner ! VictoryConfirmMsg(winner)
+            idle()
+          }else{
+            winCheckRoutine(winner,players-player)
+          }
+       }else{
+          winner ! VictoryDenyMsg(winner)
+          playerOut(winner)
+          refereeTurn()
+        }
+      case (_,AdaptedResponse(_)) => println("Something went bad during win check routine,initializing it again");winCheckRoutine(winner,players)
+    }
+  }
 }
 
-class RefereeImpl extends Referee{
+class RefereeImpl extends AbstractReferee{
    var codeLength: Option[Int]= Option.empty
-   override var players: Option[Map[ActorRef[Msg], Option[Code]]]= Option.empty
+   var players: Option[Map[ActorRef[Msg], Option[Code]]]= Option.empty
 
    var currentPlayerTurn: Future[Unit] = _
    var currentPlayerPromise: Promise[Unit] = _
+
    var turnManager: TurnManager = TurnManager()
 
 
@@ -214,12 +249,6 @@ class RefereeImpl extends Referee{
   def getAllPlayers: Option[List[ActorRef[Msg]]] = if(players.isDefined) Option(players.get.keys.toList) else Option.empty
   def getEnemies(player: ActorRef[Msg]): Option[List[ActorRef[Msg]]] = if(players.isDefined) Option(players.get.keys.toList.filter(_ != player)) else Option.empty
 
-  /**
-   * Check if a player actually won
-   *
-   * @param value values to check
-   */
-  override def checkWin(value: Map[ActorRef[Msg], Code]): Boolean = ???
 
   /**
    * Tells to a player to start his turn and sets a timer that defines time in which a player has to make a guess.
@@ -229,7 +258,6 @@ class RefereeImpl extends Referee{
   override def nextPlayerTurn(): Unit = {
     val player  = futurePlayerTurn()
     player ! YourTurnMsg(player)
-
     try {
       import scala.concurrent.duration._
       Await.result(currentPlayerTurn, Timeout.timeout.seconds)
@@ -256,7 +284,7 @@ class RefereeImpl extends Referee{
     turnManager.setPlayers(newPlayers)
   }
 
-  override def playerOut(player: ActorRef[Msg]): Unit = {players.get-player; println("Player failed to win, removing him, now players size = "+players.size); turnManager.removePlayer(player)}
+  override def playerOut(player: ActorRef[Msg]): Unit = {players = Some(players.get-player); println("Player failed to win, removing him, now players size = "+players.size); turnManager.removePlayer(player)}
 
   override def playerTurnEnd(): Unit = currentPlayerPromise.success(()=>())
 }
