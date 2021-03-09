@@ -7,7 +7,7 @@ import akka.util.Timeout
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future, Promise, TimeoutException}
-import scala.util.{Failure, Success}
+import scala.util.Success
 
 object Timeout {
   final val timeout = 10
@@ -30,9 +30,8 @@ sealed trait Player[T,K] {
  */
 abstract class Players extends Player[Msg,Code]{
 
-  def respond(self:ActorRef[Msg],player:ActorRef[Msg] ,guess:Code): Unit
   def guess(self:ActorRef[Msg]): Unit
-  def setupCode(codeLength:Int,opponents: List[ActorRef[Msg]],referee:ActorRef[Msg]):Unit
+  def setupCode(opponents: List[ActorRef[Msg]], referee:ActorRef[Msg]):Unit
 
   var referee:ActorRef[Msg]
   var myOpponents:Map[ActorRef[Msg],(Code,Boolean)]
@@ -46,8 +45,8 @@ abstract class Players extends Player[Msg,Code]{
   override def idle() : Behavior[Msg] = {
     println("Hey I'm an actor and I've been spawned!")
     Behaviors.receive{
-      case (ctx,StartGameMsg(codeLength,_,opponents,ref)) =>
-        setupCode(codeLength, opponents.filter(x => x != ctx.self), ref)
+      case (ctx,StartGameMsg(_,opponents,ref)) =>
+        setupCode(opponents.filter(x => x != ctx.self), ref)
         waitTurn(myCode);
       case _ => Behaviors.same
     }
@@ -60,8 +59,11 @@ abstract class Players extends Player[Msg,Code]{
    * @return //
    */
    def waitTurn(mySecretNumber:Code): Behavior[Msg] = Behaviors.receive{
-      case (_,_ : YourTurnMsg) =>  myTurn(mySecretNumber)
-      case (ctx, GuessMsg(actor,code)) => respond(ctx.self,actor,code); Behaviors.same
+      case (_, _ : YourTurnMsg) =>  myTurn(mySecretNumber)
+        // Received a guess from another player, send response to referee
+      case (ctx, GuessMsg(sender, _ , code)) =>
+        referee ! GuessResponseMsg(ctx.self, sender, code, myCode.getResponse(code))
+        Behaviors.same
       case _ => Behaviors.same
   }
 
@@ -73,38 +75,37 @@ abstract class Players extends Player[Msg,Code]{
   def myTurn(mySecretNumber:Code): Behavior[Msg] = Behaviors.setup { ctx =>
       guess(ctx.self)
       Behaviors.receive {
-        case (ctx, GuessResponseMsg(player, _, response)) => if(response.isCorrect){
-          if(myOpponents.values.map(_._2).reduce(_&_)){
-            referee ! AllGuessesMsg(ctx.self,myOpponents.map(x=> x._1 -> x._2._1))
-          }else{
-            codeBreaker = CodeBreakerImplObj()
-            myOpponents.find(_._1 equals player).map(player => player._2._2) //TODO check if such change is reflected into myOpponents
+        case (ctx, GuessResponseMsg(sender, _, _, response)) =>
+          if(response.isCorrect) {
+            if(myOpponents.values.map(_._2).reduce(_&_)) {
+              referee ! AllGuessesMsg(ctx.self,myOpponents.map(x=> x._1 -> x._2._1))
+            } else {
+              codeBreaker = CodeBreakerImplObj()
+              myOpponents.find(_._1 equals sender).map(player => player._2._2) //TODO check if such change is reflected into myOpponents
+            }
+          } else {
+            codeBreaker.receiveKey(response)
           }
-        }else{
-          codeBreaker.receiveKey(response)
-        }; waitTurn(mySecretNumber)
-        case (_, _: VictoryConfirmMsg) => println("I WON!"); idle(); //TODO
+          waitTurn(mySecretNumber)
+        case (_, _ : VictoryConfirmMsg) =>
+          println("I WON!")
+          idle(); //TODO
         case _ => Behaviors.same
       }
     }
 }
 
 class UserPlayer extends Players {
-  override var myCode: Code = _
-  override var codeBreaker: CodeBreakerImpl = _
+  override var myCode: Code = Code()
+  override var codeBreaker: CodeBreakerImpl = CodeBreakerImplObj()
   override var myOpponents:Map[ActorRef[Msg],(Code,Boolean)] = Map.empty
    var referee: ActorRef[Msg] = _
 
-  override def respond(self:ActorRef[Msg],player: ActorRef[Msg], guess: Code): Unit = {
-    //TODO HANDLE GUI
-  }
   override def guess(self:ActorRef[Msg]): Unit = {
     //TODO HANDLE GUI
   }
 
-  override def setupCode(codeLength: Int, opponents:List[ActorRef[Msg]],ref:ActorRef[Msg]): Unit = {
-    myCode = Code(codeLength)
-    codeBreaker = CodeBreakerImplObj()
+  override def setupCode(opponents:List[ActorRef[Msg]],ref:ActorRef[Msg]): Unit = {
     myOpponents = opponents.map(x => x->(Code(),false)).toMap
     referee = ref
   }
@@ -115,25 +116,22 @@ object UserPlayer {
 }
 
 class AIPlayer extends Players {
-  override var myCode: Code = _
-  override var codeBreaker: CodeBreakerImpl = _
+  override var myCode: Code = Code()
+  override var codeBreaker: CodeBreakerImpl = CodeBreakerImplObj()
   override var myOpponents:Map[ActorRef[Msg],(Code,Boolean)] = Map.empty
-   var referee: ActorRef[Msg] = _
-
-  override def respond(self:ActorRef[Msg],player: ActorRef[Msg], guess: Code): Unit = player ! GuessResponseMsg(self,guess,myCode.getResponse(guess))
+  var storedGuess: Option[Code] = Option.empty
+  var referee: ActorRef[Msg] = _
 
   override def guess(self: ActorRef[Msg]): Unit = {
-    val target = myOpponents.find(x=> !x._2._2)
-    if (target.isDefined){
-      target.get._1 ! GuessMsg(self,codeBreaker.guess)
-    }else{
-      referee ! AllGuessesMsg(self,myOpponents map  { case (actor, code -> _) => actor->code })
+    val target = myOpponents.find(x => !x._2._2)
+    if (target.isDefined) {
+      referee ! GuessMsg(self, target.get._1, codeBreaker.guess)
+    } else {
+      referee ! AllGuessesMsg(self,myOpponents map { case (actor, code -> _) => actor->code })
     }
   }
 
-  override def setupCode(codeLength: Int, opponents:List[ActorRef[Msg]],ref:ActorRef[Msg]): Unit = {
-    myCode = Code(codeLength)
-    codeBreaker = CodeBreakerImplObj()
+  override def setupCode(opponents:List[ActorRef[Msg]],ref:ActorRef[Msg]): Unit = {
     myOpponents = opponents.map(x => x->(Code(),false)).toMap
     referee = ref
   }
@@ -146,33 +144,28 @@ sealed trait Referee[T,K]{
   def idle():Behavior[T]
   def refereeTurn():Behavior[T]
   def winCheckRoutine(winner:ActorRef[T],players: Map[ActorRef[T],K]) :Behavior[T]
-  def players:Option[Map[ActorRef[T],Option[K]]]
+  def players:Option[List[ActorRef[T]]]
 }
 /**
  * Game's corrupted referee
  */
 abstract class AbstractReferee extends Referee[Msg,Code] {
 
-  /** Generates player codes
-   *
-   * @return true if codes have been set, false if they already were set
-   * */
-  def generateCodes(): Boolean
   /**Allows a player to play his turn*/
   def nextPlayerTurn():Unit
   def playerOut(player: ActorRef[Msg]):Unit
-  var players:Option[Map[ActorRef[Msg],Option[Code]]]
+  var players:Option[List[ActorRef[Msg]]]
 
   def playerTurnEnd():Unit
-  def setupGame(codeLength:Int,players:List[ActorRef[Msg]]):Unit
+  def setupGame(players:List[ActorRef[Msg]]):Unit
   /**
    *
    */
   override def idle() : Behavior[Msg] = {
     println("Referee has been spawned!")
     Behaviors.receive{
-      case (_,StartGameMsg(newCodeLength, _, newPlayers,_)) =>
-        setupGame(newCodeLength,newPlayers)
+      case (_,StartGameMsg(_, newPlayers,_)) =>
+        setupGame(newPlayers)
         refereeTurn()
       case _ => Behaviors.same
     }
@@ -183,6 +176,11 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
       Behaviors.receive{
         case (_,StopGameMsg()) => idle()
         case (_,AllGuessesMsg(winner,guesses)) => winCheckRoutine(winner,guesses)
+          // The referee acts as an intermediary between players
+        case (_,msg: GuessMsg) =>
+          Behaviors.same
+        case (_,msg: GuessResponseMsg) =>
+          Behaviors.same
         case _ => Behaviors.same
       }
     }
@@ -199,14 +197,13 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
     implicit val timeout: Timeout = 10.seconds
     case class AdaptedResponse(message: String) extends Msg
 
-
-    ctx.ask[Msg,Msg](players.keySet.head, ref => GuessMsg(ref,players.values.head)){
+    ctx.ask[Msg,Msg](players.keySet.head, ref => GuessMsg(ref, players.keySet.head, players.values.head)){
       case Success(c: GuessResponseMsg) => c
-      case Failure(_) => AdaptedResponse("Failure")
+      case _ => AdaptedResponse("Failure")
     }
 
     Behaviors.receive{
-      case (_,GuessResponseMsg(player,_,response)) =>
+      case (_,GuessResponseMsg(sender, player, _, response)) =>
         if(response.isCorrect){
           if(players.size == 1){
             winner ! VictoryConfirmMsg(winner)
@@ -219,36 +216,21 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
           playerOut(winner)
           refereeTurn()
         }
-      case (_,AdaptedResponse(_)) => println("Something went bad during win check routine,initializing it again");winCheckRoutine(winner,players)
+      case _ => println("Something went bad during win check routine,initializing it again");winCheckRoutine(winner,players)
     }
   }
 }
 
 class RefereeImpl extends AbstractReferee{
-   var codeLength: Option[Int]= Option.empty
-   var players: Option[Map[ActorRef[Msg], Option[Code]]]= Option.empty
+   var players: Option[List[ActorRef[Msg]]] = Option.empty
 
    var currentPlayerTurn: Future[Unit] = _
    var currentPlayerPromise: Promise[Unit] = _
 
    var turnManager: TurnManager = TurnManager()
 
-
-
-  /** Generates player codes
-   *
-   * @return true if codes have been set, false if they already were set
-   * */
-  override def generateCodes(): Boolean = {
-    if(players.isDefined) {
-      players = Option(players.get.map(el => el._1 -> Option(new Code())))
-      true
-    } else false
-  }
-
-  def getAllPlayers: Option[List[ActorRef[Msg]]] = if(players.isDefined) Option(players.get.keys.toList) else Option.empty
-  def getEnemies(player: ActorRef[Msg]): Option[List[ActorRef[Msg]]] = if(players.isDefined) Option(players.get.keys.toList.filter(_ != player)) else Option.empty
-
+  def getAllPlayers: Option[List[ActorRef[Msg]]] = if(players.isDefined) Option(players.get) else Option.empty
+  def getEnemies(player: ActorRef[Msg]): Option[List[ActorRef[Msg]]] = if(players.isDefined) Option(players.get.filter(_ != player)) else Option.empty
 
   /**
    * Tells to a player to start his turn and sets a timer that defines time in which a player has to make a guess.
@@ -268,7 +250,7 @@ class RefereeImpl extends AbstractReferee{
 
 
   /**
-   * tells a player to start his turn and sets two variables to check if he made a guessor if
+   * tells a player to start his turn and sets two variables to check if he made a guesser if
    * his time and turn are over(@currentPlayer)
    * @return
    */
@@ -278,13 +260,12 @@ class RefereeImpl extends AbstractReferee{
     turnManager.nextPlayer
   }
 
-  override def setupGame(cLength: Int,newPlayers: List[ActorRef[Msg]]): Unit = {
-    codeLength = Option(cLength)
-    players = Option(newPlayers.map(x => x->Option(Code())).toMap)
+  override def setupGame(newPlayers: List[ActorRef[Msg]]): Unit = {
+    players = Option(newPlayers) //TODO FOR EACH PLAYER GET CODE
     turnManager.setPlayers(newPlayers)
   }
 
-  override def playerOut(player: ActorRef[Msg]): Unit = {players = Some(players.get-player); println("Player failed to win, removing him, now players size = "+players.size); turnManager.removePlayer(player)}
+  override def playerOut(player: ActorRef[Msg]): Unit = {players = Some(players.get.filter(el => el != player)); println("Player failed to win, removing him, now players size = "+players.size); turnManager.removePlayer(player)}
 
   override def playerTurnEnd(): Unit = currentPlayerPromise.success(()=>())
 }
@@ -312,6 +293,7 @@ class GameController {
 
       println("Created players: " + playersList) //TODO JUST DEBUG MSG
 
+      Code.setLength(msg.getLength)
       referee.get ! StartGameMsg(msg.getLength, msg.getResponses, playersList, referee.get)
       GUI.logChat("The game has started")
 
@@ -351,6 +333,7 @@ class GameController {
     case msg : GuessMsg => GUI.logChat("Trying to guess " + msg.getPlayer + " code -> " + msg.getGuess)
     case msg : AllGuessesMsg => GUI.logChat("Trying to guess all codes:\n" + msg.getGuesses.map(x => x._1 + " -> " + x._2).mkString(",\n"))
     case msg : GuessResponseMsg => GUI.logChat("Response from " + msg.getPlayer + " -> " + msg.getResponse)
+    case msg : TurnEnd => GUI.logChat("Player " + msg.getPlayer + " did not answer in time")
     case msg : VictoryConfirmMsg => GUI.logChat(msg.getPlayer + " just won the game! YAY!")
     case msg : VictoryDenyMsg => GUI.logChat(msg.getPlayer + " failed miserably his attempt at winning the game.")
     case _ => GUI.logChat("Controller received an unexpected Msg")

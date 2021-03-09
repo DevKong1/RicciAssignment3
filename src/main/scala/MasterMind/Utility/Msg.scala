@@ -9,13 +9,14 @@ import akka.actor.typed.ActorRef
 //  Player Messages
 //
 
-case class GuessMsg(private val player: ActorRef[Msg], private val guess: Code) extends Msg {
+case class GuessMsg(private val sender: ActorRef[Msg], private val player: ActorRef[Msg], private val guess: Code) extends Msg {
+ def getSender: ActorRef[Msg] = sender
  def getPlayer: ActorRef[Msg] = player
  def getGuess: Code = guess
 }
 
 object GuessMsg {
- def apply(player: ActorRef[Msg], guess: Code): GuessMsg = new GuessMsg(player, guess)
+ def apply(sender: ActorRef[Msg], player: ActorRef[Msg], guess: Code): GuessMsg = new GuessMsg(sender, player, guess)
 }
 
 case class AllGuessesMsg(candidateWinner:ActorRef[Msg], private val guesses: Map[ActorRef[Msg], Code]) extends Msg {
@@ -47,16 +48,18 @@ object YourTurnMsg {
  def apply(player: ActorRef[Msg]): YourTurnMsg = new YourTurnMsg(player)
 }
 
-case class GuessResponseMsg(private val player: ActorRef[Msg], private val guess: Code, private val response: Response) extends Msg {
+case class GuessResponseMsg(private val sender: ActorRef[Msg], private val player: ActorRef[Msg], private val guess: Code, private val response: Response) extends Msg {
+ def getSender: ActorRef[Msg] = sender
  def getPlayer: ActorRef[Msg] = player
  def getGuess: Code = guess
  def getResponse: Response = response
 }
 
 object GuessResponseMsg {
- def apply(player: ActorRef[Msg], guess: Code, response: Response): GuessResponseMsg = new GuessResponseMsg(player, guess, response)
+ def apply(sender: ActorRef[Msg], player: ActorRef[Msg], guess: Code, response: Response): GuessResponseMsg = new GuessResponseMsg(sender, player, guess, response)
 }
 case class TurnEnd(player:ActorRef[Msg]) extends Msg {
+ def getPlayer: ActorRef[Msg] = player
 }
 case class VictoryConfirmMsg(private val player: ActorRef[Msg]) extends Msg {
  def getPlayer: ActorRef[Msg] = player
@@ -78,15 +81,14 @@ object VictoryDenyMsg {
 //  Game Messages
 //
 
-case class StartGameMsg(private val codeLength: Int, private val sendGuessToOthers: Boolean, private val players: List[ActorRef[Msg]], private val referee: ActorRef[Msg]) extends Msg {
- def getCodeLength = codeLength
- def getSendGuessToOthers = sendGuessToOthers
- def getPlayers = players
- def getReferee = referee
+case class StartGameMsg(private val sendGuessToOthers: Boolean, private val players: List[ActorRef[Msg]], private val referee: ActorRef[Msg]) extends Msg {
+ def getSendGuessToOthers: Boolean = sendGuessToOthers
+ def getPlayers: Seq[ActorRef[Msg]] = players
+ def getReferee: ActorRef[Msg] = referee
 }
 
 object StartGameMsg {
- def apply(codeLength: Int, sendGuessToOthers: Boolean, players: List[ActorRef[Msg]], referee: ActorRef[Msg]): StartGameMsg = new StartGameMsg(codeLength, sendGuessToOthers, players, referee)
+ def apply(codeLength: Int, sendGuessToOthers: Boolean, players: List[ActorRef[Msg]], referee: ActorRef[Msg]): StartGameMsg = new StartGameMsg(sendGuessToOthers, players, referee)
 }
 
 case class StopGameMsg() extends Msg {

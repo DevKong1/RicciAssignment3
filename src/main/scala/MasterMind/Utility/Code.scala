@@ -1,14 +1,16 @@
 package MasterMind.Utility
 
+import sun.security.util.Length
+
 import scala.collection.mutable
 import scala.util.Random
 
 // Mastermind Code representation
 
-class Code(/*codePoint: Int, pegs: Array[Int], code: String*/) {
+class Code(length: Int) {
   val RandomNum: Random = new Random()
   val codeRadix: Int = 10
-  val codeLength: Int = 4
+  val codeLength: Int = length
   var pegs: Array[Int] = Array.emptyIntArray
   var codePoint: Int = 0
 
@@ -101,29 +103,34 @@ class Code(/*codePoint: Int, pegs: Array[Int], code: String*/) {
 }
 
 object Code {
+  var length = 4
+
+  def setLength(newLength: Int): Unit = this.length = newLength
+  def getLength: Int = this.length
+
   def apply(): Code = {
-    val code: Code = new Code()
+    val code: Code = new Code(length)
     code.codePoint = Random.nextInt(code.codeRange)
     code.pegs = code.toPegs(code.codePoint)
     code
   }
 
   def apply(codePoint: Int): Code = {
-    val code: Code = new Code()
+    val code: Code = new Code(length)
     code.codePoint = codePoint
     code.pegs = code.toPegs(codePoint)
     code
   }
 
   def apply(pegs: Array[Int]): Code = {
-    val code: Code = new Code()
+    val code: Code = new Code(length)
     code.pegs = pegs
     code.codePoint = code.toCodePoint(pegs)
     code
   }
 
   def apply(num: String): Code = {
-    val code: Code = new Code()
+    val code: Code = new Code(length)
     val p: Array[Char] = num.toCharArray
     code.pegs = Array[Int](p.length)
     for(i <- 0 to p.length) {
