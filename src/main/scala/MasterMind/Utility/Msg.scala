@@ -20,6 +20,7 @@ object GuessMsg {
 }
 
 case class AllGuessesMsg(candidateWinner:ActorRef[Msg], private val guesses: Map[ActorRef[Msg], Code]) extends Msg {
+ def getPlayer: ActorRef[Msg] = candidateWinner
  def getGuesses: Map[ActorRef[Msg],Code] = guesses
 }
 
