@@ -140,8 +140,12 @@ object AIPlayer {
   def apply(): Behavior[Msg] = new AIPlayer().idle()
 }
 sealed trait Referee[T,K]{
+  /**
+   * waits for game to start
+   * @return
+   */
   def idle():Behavior[T]
-  def refereeTurn(ctx: ActorContext[T]):Behavior[T]
+  def refereeTurn():Behavior[T]
   def winCheckRoutine(winner:ActorRef[T],players: Map[ActorRef[T],K]) :Behavior[T]
   def players:Option[List[ActorRef[T]]]
 }
@@ -156,6 +160,10 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
   /**Allows a player to play his turn*/
   def nextPlayerTurn(ctx: ActorContext[Msg]):Unit
   def playerOut(player: ActorRef[Msg]):Unit
+
+  /**
+   * players in game with their secret code
+   */
   var players:Option[List[ActorRef[Msg]]]
 
   def setupGame(players:List[ActorRef[Msg]]):Unit
@@ -167,12 +175,12 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
     Behaviors.receive{
       case (ctx,StartGameMsg(_, newPlayers,_)) =>
         setupGame(newPlayers)
-        refereeTurn(ctx)
+        refereeTurn()
       case _ => Behaviors.same
     }
   }
 
-  override def refereeTurn(ctx: ActorContext[Msg]) : Behavior[Msg] = {
+  override def refereeTurn() : Behavior[Msg] = Behaviors.setup{ ctx =>
       nextPlayerTurn(ctx)
       Behaviors.receive{
         case (_,StopGameMsg()) => idle()
@@ -233,7 +241,7 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
        } else {
           winner ! VictoryDenyMsg(winner)
           playerOut(winner)
-          refereeTurn(ctx)
+          refereeTurn()
         }
       case _ => println("Something went bad during win check routine,initializing it again"); winCheckRoutine(winner,players)
     }
