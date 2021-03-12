@@ -97,25 +97,6 @@ class GameBoard() extends Dialog {
   logChat.font = Font("monospaced", Font.Italic, 15)
 
   title = "Mastermind's GameBoard"
-
-  /*
-  val playerPanel = new BoxPanel(Orientation.Vertical)
-
-  for( i <- 0 until nPlayers) {
-    playerPanel.contents += new GridPanel(1,2) {
-      contents += new Label("Player " + i)
-      i match {
-          case 0 => contents += new Label("My turn")
-          case _ => contents += new Label("My turn") {
-            visible = false
-          }
-        }
-      vGap = 10
-    }
-    //println("Hello Player " + i)
-  }
-  */
-
   contents = new ScrollPane(logChat)
 
   size = new Dimension(700, 500)
