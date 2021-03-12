@@ -59,12 +59,13 @@ abstract class Players extends Player[Msg,Code]{
    * @return //
    */
    def waitTurn(mySecretNumber:Code): Behavior[Msg] = Behaviors.receive{
-      case (cx, _ : YourTurnMsg) =>println(cx.self +"starting a turn!"); myTurn(mySecretNumber)
+      case (cx, _ : YourTurnMsg) => println(cx.self +" starting a turn!"); myTurn(mySecretNumber)
         // Received a guess from another player, send response to referee
       case (ctx, GuessMsg(sender, _ , code)) =>
         println(ctx.self +" just received a guess msg, sending response!")
         referee ! GuessResponseMsg(ctx.self, sender, code, myCode.getResponse(code))
         Behaviors.same
+      case (cx, _ : StopGameMsg) => println(cx.self +" Stopping..."); idle();
       case _ => Behaviors.same
   }
 
@@ -92,6 +93,7 @@ abstract class Players extends Player[Msg,Code]{
         case (_, _ : VictoryConfirmMsg) =>
           println(ctx.self+": told ya I was gonna win this")
           idle(); //TODO
+        case (cx, _ : StopGameMsg) => println(cx.self +" Stopping..."); idle();
         case _ => Behaviors.same
       }
     }
