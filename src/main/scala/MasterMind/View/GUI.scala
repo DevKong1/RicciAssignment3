@@ -9,7 +9,7 @@ import javax.swing.border.LineBorder
 
 import scala.util.control.Exception.allCatch
 import scala.swing.event.ButtonClicked
-import scala.swing.{BoxPanel, Button, CheckBox, Dialog, Dimension, FlowPanel, GridPanel, Label, MainFrame, Orientation, TextArea, TextField}
+import scala.swing.{BoxPanel, Button, CheckBox, Dialog, Dimension, FlowPanel, Font, GridPanel, Label, MainFrame, Orientation, ScrollPane, TextArea, TextField}
 
 object GUI extends MainFrame {
 
@@ -94,6 +94,7 @@ class GameBoard() extends Dialog {
   val logChat: TextArea = new TextArea("GAME IS STARTED!")
   logChat.editable = false
   logChat.border = new LineBorder(Color.BLACK, 2)
+  logChat.font = Font("monospaced", Font.Italic, 15)
 
   title = "Mastermind's GameBoard"
 
@@ -115,11 +116,9 @@ class GameBoard() extends Dialog {
   }
   */
 
-  contents = new BoxPanel(Orientation.Vertical) {
-    contents ++= Seq(logChat)
-  }
+  contents = new ScrollPane(logChat)
 
-  size = new Dimension(600, 450)
+  size = new Dimension(700, 500)
   this.peer.setLocationRelativeTo(null)
 
   override def closeOperation(): Unit = {

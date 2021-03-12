@@ -20,9 +20,9 @@ class Code(length: Int) {
   //def getCodeLength: Int = codeLength
 
   def getRange: Set[Code] = {
-    var allCodes: Set[Code] = Set.empty
-    for(i <- 0 to codeRange) {
-      allCodes ++= mutable.Set(Code(i))
+    var allCodes: Set[Code] = Set()
+    for(i <- 0 until codeRange) {
+      allCodes += Code(i)
     }
     allCodes
   }
@@ -42,10 +42,10 @@ class Code(length: Int) {
 
   def toCodePoint(pegs: Array[Int]): Int = {
     var q: Int = 0
-    for(i <- 0 to pegs.length) {
+    for(i <- pegs.indices) {
       pegs(i) match {
         case 0 =>
-        case _ => q = (q + pegs(i) * Math.pow(10,i)).toInt
+        case _ => q = q+(pegs(i) * Math.pow(10,i)).toInt
       }
     }
     q
@@ -55,7 +55,7 @@ class Code(length: Int) {
     val output: Array[Int] = new Array[Int](codeLength)
     var cP: Int = codePoint
     for(i <- 0 until codeLength) {
-      output(i) = codePoint % codeRadix
+      output(i) = cP % codeRadix
       cP /= codeRadix
     }
     output
@@ -66,15 +66,15 @@ class Code(length: Int) {
     val b: Array[Int] = Array.copyOf(other.pegs, other.pegs.length)
     var black: Int = 0
     var white: Int = 0
-    for(i <- 0 to a.length) {
+    for(i <- a.indices) {
       if(a(i).equals(b(i))) {
         black+=1
         a(i) = -1
         b(i) = -2
       }
     }
-    for(i <- 0 to a.length) {
-      for(j <- 0 to b.length) {
+    for(i <- a.indices) {
+      for(j <- b.indices) {
         if(a(i).equals(b(i))) {
           white+=1
           b(j) = -2
@@ -90,20 +90,20 @@ class Code(length: Int) {
   override def equals(obj: Any): Boolean = {
     if (this eq obj.asInstanceOf[Object]) return true
     if (obj == null) return false
-    if (getClass ne obj.getClass) return false
-    //val other: Code = obj.asInstanceOf[Code]
+    if (getClass != obj.getClass) return false
     this.codePoint == obj.asInstanceOf[Code].codePoint
   }
 
   override def toString: String = {
-    val str: Array[Char] = new Array[Char](pegs.length)
-    for(i <- 0 to pegs.length) { str(i)=Character.forDigit(pegs(i), 10)}
+    val str = new Array[Char](pegs.length)
+    for(i <- pegs.indices) { str(i)=Character.forDigit(pegs(i), 10)}
     new String(str)
   }
 }
 
 object Code {
   var length = 4
+  var universe: Set[Code] = Set.empty
 
   def setLength(newLength: Int): Unit = this.length = newLength
   def getLength: Int = this.length
@@ -145,13 +145,13 @@ sealed trait CodeBreaker {
   def receiveKey(response: Response): Unit
 }
 
-class CodeBreakerImpl extends CodeBreaker {
+class CodeBreakerImpl(codeRange: Set[Code]) extends CodeBreaker {
 
   var response: Response = _
   var lastGuess: Code = _
 
-  var impossible: List[Code] = List.empty
-  var possible: Set[Code] = Set.empty
+  var impossible: List[Code] = List()
+  var possible: Set[Code] = codeRange
 
   def guess: Code = {
     var minimumEliminated: Int = -1
@@ -159,7 +159,7 @@ class CodeBreakerImpl extends CodeBreaker {
     var unused: List[Code] = possible.toList
     unused ++= impossible
     for(a <- unused) {
-      val minMaxTable: Array[Array[Int]] = Array.ofDim(Code().codeLength+1, Code().codeLength+1).asInstanceOf[Array[Array[Int]]]
+      val minMaxTable = Array.ofDim[Int](Code.getLength+1, Code.getLength+1)
       for(b <- possible) {
         val abResp: Response = a.getResponse(b)
         minMaxTable(abResp.getBlack)(abResp.getWhite)+=1
@@ -196,7 +196,7 @@ class CodeBreakerImpl extends CodeBreaker {
 }
 
 object CodeBreakerImplObj {
-  def apply(): CodeBreakerImpl = new CodeBreakerImpl()
+  def apply(codeRange: Set[Code]): CodeBreakerImpl = new CodeBreakerImpl(codeRange)
 }
 
 sealed trait CodeMaker {

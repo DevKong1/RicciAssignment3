@@ -82,7 +82,7 @@ abstract class Players extends Player[Msg,Code]{
             if(myOpponents.values.map(_._2).reduce(_&_)) {
               referee ! AllGuessesMsg(ctx.self,myOpponents.map(x=> x._1 -> x._2._1))
             } else {
-              codeBreaker = CodeBreakerImplObj()
+              codeBreaker = CodeBreakerImplObj(myCode.getRange)
               myOpponents.find(_._1 equals sender).map(player => player._2._2) //TODO check if such change is reflected into myOpponents
             }
           } else {
@@ -99,9 +99,9 @@ abstract class Players extends Player[Msg,Code]{
 
 class UserPlayer extends Players {
   override var myCode: Code = Code()
-  override var codeBreaker: CodeBreakerImpl = CodeBreakerImplObj()
+  override var codeBreaker: CodeBreakerImpl = CodeBreakerImplObj(myCode.getRange)
   override var myOpponents:Map[ActorRef[Msg],(Code,Boolean)] = Map.empty
-   var referee: ActorRef[Msg] = _
+  var referee: ActorRef[Msg] = _
 
   override def guess(self:ActorRef[Msg]): Unit = {
     //TODO HANDLE GUI
@@ -119,7 +119,7 @@ object UserPlayer {
 
 class AIPlayer extends Players {
   override var myCode: Code = Code()
-  override var codeBreaker: CodeBreakerImpl = CodeBreakerImplObj()
+  override var codeBreaker: CodeBreakerImpl = CodeBreakerImplObj(myCode.getRange)
   override var myOpponents:Map[ActorRef[Msg],(Code,Boolean)] = Map.empty
   var storedGuess: Option[Code] = Option.empty
   var referee: ActorRef[Msg] = _
@@ -127,6 +127,8 @@ class AIPlayer extends Players {
   override def guess(self: ActorRef[Msg]): Unit = {
     val target = myOpponents.find(x => !x._2._2)
     if (target.isDefined) {
+      val codes = codeBreaker.guess
+      println(codes + "\n" + self)
       referee ! GuessMsg(self, target.get._1, codeBreaker.guess)
     } else {
       referee ! AllGuessesMsg(self,myOpponents map { case (actor, code -> _) => actor->code })
@@ -300,6 +302,7 @@ class GameController {
     // Initialize game msg
     case (context, msg: InitializeControllerMsg) =>
       println("Received Init Msg") //TODO JUST DEBUG MSG
+      Code.setLength(msg.getLength)
 
       referee = Some(context.spawn(Referee(context.self), "Referee"))//TODO CHECK
 
@@ -311,7 +314,6 @@ class GameController {
 
       println("Created players: " + playersList) //TODO JUST DEBUG MSG
 
-      Code.setLength(msg.getLength)
       playersList foreach (_ ! StartGameMsg(msg.getLength, msg.getResponses, playersList, referee.get))
       referee.get ! StartGameMsg(msg.getLength, msg.getResponses, playersList, referee.get)
       GUI.logChat("The game has started")
@@ -348,13 +350,13 @@ class GameController {
     // NO StartGame or StopGame Msg since it's the controller which executes those commands
     // Each of this will do an ex. GUI.logChat("Player " + GuessMsg.Player.Name + " tried to guess ....
     case msg : TurnOrderMsg =>  GUI.logChat("The order for this round is " + msg.getTurns.mkString(" -> "))
-    case msg : YourTurnMsg => GUI.logChat(msg.getPlayer + " it's your turn!")
-    case msg : GuessMsg => GUI.logChat(msg.getSender + " trying to guess " + msg.getPlayer + " code -> " + msg.getGuess)
-    case msg : AllGuessesMsg => GUI.logChat(msg.getPlayer + " is trying to guess all codes:\n" + msg.getGuesses.map(x => x._1 + " -> " + x._2).mkString(",\n"))
-    case msg : GuessResponseMsg => GUI.logChat("Response from " + msg.getSender + " to " + msg.getPlayer + " -> " + msg.getResponse)
-    case msg : TurnEnd => GUI.logChat("Player " + msg.getPlayer + " did not answer in time")
-    case msg : VictoryConfirmMsg => GUI.logChat(msg.getPlayer + " just won the game! YAY!")
-    case msg : VictoryDenyMsg => GUI.logChat(msg.getPlayer + " failed miserably his attempt at winning the game.")
+    case msg : YourTurnMsg => GUI.logChat(msg.getPlayer.path.name + " it's your turn!")
+    case msg : GuessMsg => GUI.logChat(msg.getSender.path.name + " trying to guess " + msg.getPlayer.path.name + " code -> " + msg.getGuess)
+    case msg : AllGuessesMsg => GUI.logChat(msg.getPlayer.path.name + " is trying to guess all codes:\n" + msg.getGuesses.map(x => x._1 + " -> " + x._2).mkString(",\n"))
+    case msg : GuessResponseMsg => GUI.logChat("Response from " + msg.getSender.path.name + " to " + msg.getPlayer.path.name + " -> " + msg.getResponse)
+    case msg : TurnEnd => GUI.logChat("Player " + msg.getPlayer.path.name + " did not answer in time")
+    case msg : VictoryConfirmMsg => GUI.logChat(msg.getPlayer.path.name + " just won the game! YAY!")
+    case msg : VictoryDenyMsg => GUI.logChat(msg.getPlayer.path.name + " failed miserably his attempt at winning the game.")
     case _ => GUI.logChat("Controller received an unexpected Msg")
   }
 }
