@@ -5,12 +5,17 @@ import akka.actor.typed.ActorRef
 import scala.util.Random
 
 
-class TurnManager(var players: Seq[ActorRef[Msg]],var index:Int) {
-  def nextPlayer: ActorRef[Msg] = if (index == players.size) {
+class TurnManager(var players: Seq[ActorRef[Msg]],val index1:Int) {
+  private var index = index1
+
+  def nextPlayer: ActorRef[Msg] = if (index == players.size-1) {
+    println("Completed a whole turn!")
     nextTurnOrder()
     players(index)
-  }else players(index)
-
+  } else {
+    index += 1;
+    players(index)
+  }
 
   private def nextTurnOrder() : Unit = {
     index = 0
@@ -21,5 +26,5 @@ class TurnManager(var players: Seq[ActorRef[Msg]],var index:Int) {
   def removePlayer(player:ActorRef[Msg]) : Unit = players filterNot Seq(player).contains
 }
 object TurnManager{
-  def apply(): TurnManager = new TurnManager(Seq.empty,0)
+  def apply(): TurnManager = new TurnManager(Seq.empty,-1)
 }
