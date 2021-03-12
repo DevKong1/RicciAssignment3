@@ -6,7 +6,7 @@ import akka.actor.typed.{ActorRef, Behavior}
 import akka.util.Timeout
 
 import scala.concurrent.duration._
-import scala.util.Success
+import scala.util.{Failure, Success}
 
 object Timeout {
   final val timeout = 10.seconds
@@ -45,6 +45,7 @@ abstract class Players extends Player[Msg,Code]{
     println("Hey I'm an actor and I've been spawned!")
     Behaviors.receive{
       case (ctx,StartGameMsg(_,opponents,ref)) =>
+        println("I'm actor "+ctx.self+" and someone told me things are 'bout to get serious!")
         setupCode(opponents.filter(x => x != ctx.self), ref)
         waitTurn(myCode);
       case _ => Behaviors.same
@@ -58,9 +59,10 @@ abstract class Players extends Player[Msg,Code]{
    * @return //
    */
    def waitTurn(mySecretNumber:Code): Behavior[Msg] = Behaviors.receive{
-      case (_, _ : YourTurnMsg) =>  myTurn(mySecretNumber)
+      case (cx, _ : YourTurnMsg) =>println(cx.self +"starting a turn!"); myTurn(mySecretNumber)
         // Received a guess from another player, send response to referee
       case (ctx, GuessMsg(sender, _ , code)) =>
+        println(ctx.self +" just received a guess msg, sending response!")
         referee ! GuessResponseMsg(ctx.self, sender, code, myCode.getResponse(code))
         Behaviors.same
       case _ => Behaviors.same
@@ -72,6 +74,7 @@ abstract class Players extends Player[Msg,Code]{
    * @return
    */
   def myTurn(mySecretNumber:Code): Behavior[Msg] = Behaviors.setup { ctx =>
+    println(ctx.self+": just started my turn bitches")
       guess(ctx.self)
       Behaviors.receive {
         case (ctx, GuessResponseMsg(sender, _, _, response)) =>
@@ -87,7 +90,7 @@ abstract class Players extends Player[Msg,Code]{
           }
           waitTurn(mySecretNumber)
         case (_, _ : VictoryConfirmMsg) =>
-          println("I WON!")
+          println(ctx.self+": told ya I was gonna win this")
           idle(); //TODO
         case _ => Behaviors.same
       }
@@ -174,6 +177,7 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
     println("Referee has been spawned!")
     Behaviors.receive{
       case (ctx,StartGameMsg(_, newPlayers,_)) =>
+        println("Ref just received startGameMsg")
         setupGame(newPlayers)
         refereeTurn()
       case _ => Behaviors.same
@@ -181,6 +185,7 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
   }
 
   override def refereeTurn() : Behavior[Msg] = Behaviors.setup{ ctx =>
+      println("Ref arbitrando next turn")
       nextPlayerTurn(ctx)
       Behaviors.receive{
         case (_,StopGameMsg()) => idle()
@@ -234,6 +239,7 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
         if(response.isCorrect) {
           if(players.size == 1) {
             winner ! VictoryConfirmMsg(winner)
+            println(winner +" just incredibly won!")
             idle()
           } else {
             winCheckRoutine(winner,players-player)
@@ -269,6 +275,7 @@ class RefereeImpl(private val controllerRef: ActorRef[Msg]) extends AbstractRefe
 
     ctx.ask[Msg,Msg](currentPlayer.get, ref => YourTurnMsg(ref)) {
       case Success(msg: GuessMsg) => msg
+      case Failure(_) => println(currentPlayer.get +" didn't guess in time23"); TurnEnd(currentPlayer.get)
       case _ => TurnEnd(currentPlayer.get)
     }
   }
@@ -305,6 +312,7 @@ class GameController {
       println("Created players: " + playersList) //TODO JUST DEBUG MSG
 
       Code.setLength(msg.getLength)
+      playersList foreach (_ ! StartGameMsg(msg.getLength, msg.getResponses, playersList, referee.get))
       referee.get ! StartGameMsg(msg.getLength, msg.getResponses, playersList, referee.get)
       GUI.logChat("The game has started")
 
