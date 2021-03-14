@@ -88,7 +88,7 @@ abstract class Players extends Player[Msg,Code] {
       if(response.isCorrect) {
         myOpponents = myOpponents.map { el =>
           if(el._1 == sender)
-            (el._1, (el._2._1,true))
+            (el._1, (codeBreaker.lastGuess,true))
           else el
         }
         if(myOpponents.values.map(_._2).reduce(_&_)) {
@@ -141,7 +141,6 @@ class AIPlayer extends Players {
   override def guess(ctx: ActorContext[Msg]): Unit = {
     val target = myOpponents.find(x => !x._2._2)
     if (target.isDefined) {
-      println(ctx.self + " I'm guessing " + target)
       referee ! GuessMsg(ctx.self, target.get._1, codeBreaker.guess)
     } else {
       referee ! AllGuessesMsg(ctx.self,myOpponents map { case (actor, code -> _) => actor->code })
