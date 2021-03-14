@@ -28,6 +28,14 @@ object AllGuessesMsg {
  def apply(winner:ActorRef[Msg],guesses: Map[ActorRef[Msg], Code]): AllGuessesMsg = new AllGuessesMsg(winner,guesses)
 }
 
+case class ReceivedResponseMsg(private val sender: ActorRef[Msg]) extends Msg {
+ def getSender: ActorRef[Msg] = sender
+}
+
+object ReceivedResponseMsg {
+ def apply(sender: ActorRef[Msg]): ReceivedResponseMsg = new ReceivedResponseMsg(sender)
+}
+
 //
 //  Referee Messages
 //

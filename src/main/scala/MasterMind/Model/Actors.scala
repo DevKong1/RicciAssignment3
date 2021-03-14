@@ -82,22 +82,30 @@ abstract class Players extends Player[Msg,Code] {
    * @return
    */
   def myTurn(mySecretNumber: Code): Behavior[Msg] = Behaviors.receive {
-    case (ctx, GuessResponseMsg(sender, _, _, response)) =>
-      if (response.isCorrect) {
-        if (myOpponents.values.map(_._2).reduce(_ & _)) {
-          referee ! AllGuessesMsg(ctx.self, myOpponents.map(x => x._1 -> x._2._1))
-        } else {
-          codeBreaker = CodeBreakerImplObj(myCode.getRange)
-          myOpponents.find(_._1 equals sender).map(player => player._2._2) //TODO check if such change is reflected into myOpponents
+    case (ctx, GuessResponseMsg(sender, _ , _ , response)) =>
+      referee ! ReceivedResponseMsg(ctx.self)
+      codeBreaker.receiveKey(response)
+      if(response.isCorrect) {
+        myOpponents = myOpponents.map { el =>
+          if(el._1 == sender)
+            (el._1, (el._2._1,true))
+          else el
         }
-      } else {
-        codeBreaker.receiveKey(response)
+        if(myOpponents.values.map(_._2).reduce(_&_)) {
+          referee ! AllGuessesMsg(ctx.self,myOpponents.map(x=> x._1 -> x._2._1))
+        } else {
+          codeBreaker = CodeBreakerImplObj(myCode.getRange) //TODO check if such change is reflected into myOpponents
+        }
       }
       waitTurn(mySecretNumber)
     case (ctx, _: VictoryConfirmMsg) =>
       println(ctx.self + ": told ya I was gonna win this")
       idle(); //TODO
     case (cx, _: StopGameMsg) => println(cx.self + " Stopping..."); idle();
+    case (ctx, GuessMsg(sender, _, code)) =>
+      println(ctx.self + " just received a guess msg, sending response!")
+      referee ! GuessResponseMsg(ctx.self, sender, code, myCode.getResponse(code))
+      Behaviors.same
     case _ => Behaviors.same
   }
 }
@@ -133,7 +141,7 @@ class AIPlayer extends Players {
   override def guess(ctx: ActorContext[Msg]): Unit = {
     val target = myOpponents.find(x => !x._2._2)
     if (target.isDefined) {
-      println("Guessing "+target)
+      println(ctx.self + " I'm guessing " + target)
       referee ! GuessMsg(ctx.self, target.get._1, codeBreaker.guess)
     } else {
       referee ! AllGuessesMsg(ctx.self,myOpponents map { case (actor, code -> _) => actor->code })
@@ -201,9 +209,15 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
       if(currentPlayer.isDefined && currentPlayer.get == msg.getSender) {
         controller ! msg
         msg.getPlayer ! msg
-        nextPlayerTurn(context)
       } else {
         println("Player tried to guess after Timeout")
+      }
+      Behaviors.same
+    case (context, msg: ReceivedResponseMsg) =>
+      if(currentPlayer.isDefined && currentPlayer.get == msg.getSender) {
+        nextPlayerTurn(context)
+      } else {
+        println("Player confirmed response after Timeout")
       }
       Behaviors.same
     case (context,msg: TurnEnd) =>
@@ -276,12 +290,12 @@ class RefereeImpl(private val controllerRef: ActorRef[Msg]) extends AbstractRefe
   override def nextPlayerTurn(ctx: ActorContext[Msg]): Unit = {
     implicit val timeout: Timeout = Timeout.timeout
     currentPlayer = Option(turnManager.nextPlayer)
-
-    ctx.ask[Msg,Msg](currentPlayer.get, ref => YourTurnMsg(ref)) {
-      case Success(msg: GuessMsg) => println("\n SUCCESS"); msg
-      case Failure(_) => println(currentPlayer.get +" didn't guess in time"); TurnEnd(currentPlayer.get)
-      case _ => TurnEnd(currentPlayer.get)
-    }
+    currentPlayer.get ! YourTurnMsg(currentPlayer.get)
+//    ctx.ask[Msg,Msg](currentPlayer.get, ref => YourTurnMsg(ref)) {
+//      case Success(msg: GuessMsg) => println("\n SUCCESS"); msg
+//      case Failure(_) => println(currentPlayer.get +" didn't guess in time"); TurnEnd(currentPlayer.get)
+//      case _ => TurnEnd(currentPlayer.get)
+//    }
   }
 
   override def setupGame(newPlayers: List[ActorRef[Msg]]): Unit = {
