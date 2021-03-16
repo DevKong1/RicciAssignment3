@@ -132,8 +132,8 @@ object Code {
   def apply(num: String): Code = {
     val code: Code = new Code(length)
     val p: Array[Char] = num.toCharArray
-    code.pegs = Array[Int](p.length)
-    for(i <- 0 to p.length) {
+    code.pegs = new Array[Int](p.length)
+    for(i <- p.indices) {
       code.pegs(i) = Character.digit(p(i), 10)
     }
     code.codePoint = code.toCodePoint(code.pegs)

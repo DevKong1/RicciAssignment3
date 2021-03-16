@@ -6,6 +6,7 @@ import akka.actor.typed.{ActorRef, Behavior}
 import akka.util.Timeout
 
 import scala.concurrent.duration._
+import scala.swing.event.ButtonClicked
 import scala.util.{Failure, Success}
 
 object Timeout {
@@ -119,6 +120,8 @@ class UserPlayer extends Players {
 
   override def guess(self:ActorContext[Msg]): Unit = {
     //TODO HANDLE GUI
+    var guess: Map[String, Code] = Map.empty
+    GUI.humanPanel.sendGuess.reactions += {case ButtonClicked(_) => guess = Map.empty; guess = GUI.humanPanel.getGuess; println(guess)}
   }
 
   override def setupCode(opponents:List[ActorRef[Msg]],ref:ActorRef[Msg]): Unit = {

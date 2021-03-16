@@ -3,7 +3,7 @@ package MasterMind.View
 import java.awt.Color
 
 import MasterMind.Model.GameController
-import MasterMind.Utility.{InitializeControllerMsg, Msg}
+import MasterMind.Utility.{Code, GuessMsg, InitializeControllerMsg, Msg}
 import akka.actor.typed.ActorSystem
 import javax.swing.border.LineBorder
 
@@ -17,6 +17,7 @@ object GUI extends MainFrame {
   val gameSystem: ActorSystem[Msg] = ActorSystem(GameController(), "GameSystem")
   var gameBoard: GameBoard = _
   var humanPanel: HumanPanel = _
+  var codeLength: Int = _
 
   def top: MainFrame = new MainFrame() {
     startGame().open()
@@ -29,6 +30,8 @@ object GUI extends MainFrame {
   def logChat(msg: String) : Unit = {
     gameBoard.logChat.text += "\n> " + msg
   }
+
+  def isNumber(s: String): Boolean = (allCatch opt s.toDouble).isDefined
 }
 
 /**
@@ -37,19 +40,24 @@ object GUI extends MainFrame {
 class startingGameDialog extends Dialog {
   val numPlayers: TextField = new TextField(10)
   val textCodeLength: TextField = new TextField(10)
-  val humanCheck: CheckBox = new CheckBox("Do you want a human player? ")
+  val humanCheck: CheckBox = new CheckBox("Do you want a human player? ") /*{
+    reactions += {
+      case ButtonClicked(_) => if(humanCheck.selected) humanSelectNumberPanel.visible = true else humanSelectNumberPanel.visible = false
+    }
+  }*/
   val startButton: Button = new Button("START") {
     reactions += {
       case ButtonClicked(_) =>
-      if (isNumber(numPlayers.text)) {
-        if (isNumber(textCodeLength.text)) {
+      if (GUI.isNumber(numPlayers.text)) {
+        if (GUI.isNumber(textCodeLength.text)) {
+          GUI.codeLength = textCodeLength.text.toInt
           close()
           var isPresent: Boolean = false
           if (humanCheck.selected) {
             isPresent = true
           }
           GUI.gameBoard = Game(isPresent, numPlayers.text.toInt)
-          GUI.gameSystem ! InitializeControllerMsg(numPlayers.text.toInt, textCodeLength.text.toInt, isPresent, sharedResponses = false)
+          GUI.gameSystem ! InitializeControllerMsg(numPlayers.text.toInt, GUI.codeLength, isPresent, sharedResponses = false)
           GUI.gameBoard.open()
         } else {
           Dialog.showMessage(contents.head, "Select a valid code's length", "ERROR!", Dialog.Message.Info, null)
@@ -69,12 +77,18 @@ class startingGameDialog extends Dialog {
   }
 
   val humanPanel: BoxPanel = new BoxPanel(Orientation.Horizontal) {
-    contents += humanCheck
+    contents ++= Seq(humanCheck)
   }
+
+  /*val humanSelectNumberPanel: BoxPanel = new BoxPanel(Orientation.Horizontal) {
+    contents += new Label("Select your code: ")
+    contents += new TextField(10)
+    visible = false
+  }*/
 
   contents = new BoxPanel(Orientation.Vertical) {
     contents += new FlowPanel() {
-      contents ++= Seq(playerPanel, numberPanel, humanCheck, startButton)
+      contents ++= Seq(playerPanel, numberPanel, humanCheck, startButton) //humanSelectNumberPanel, startButton)
     }
   }
 
@@ -82,8 +96,6 @@ class startingGameDialog extends Dialog {
     super.closeOperation()
     System.exit(0)
   }
-
-  def isNumber(s: String): Boolean = (allCatch opt s.toDouble).isDefined
 
   title = "Selecting parameters"
   size = new Dimension(450, 150)
@@ -140,7 +152,7 @@ class HumanPanel(nPlayers: Int) extends BoxPanel(Orientation.Vertical) {
   val selectNumber: TextField = new TextField() {
     maximumSize = new Dimension(150,40)
   }
-  val sendGuess = new Button("Send")
+  val sendGuess: Button = new Button("Send")
 
   contents += new BoxPanel(Orientation.Horizontal) {
     contents += new Label("Select a player: ")
@@ -159,6 +171,32 @@ class HumanPanel(nPlayers: Int) extends BoxPanel(Orientation.Vertical) {
     contents += selectNumber
     contents += sendGuess
   }
+
+  def getGuess: Map[String, Code] = {
+    var guess: Map[String, Code] = Map.empty
+    val player: RadioButton = isPlayerSelected
+    if(player != null) {
+      if(isGuessValid(selectNumber.text)) {
+        guess += (player.text -> Code(selectNumber.text))
+        guess
+      } else {
+        Dialog.showMessage(contents.head, "Select a valid number with specified length", "ERROR!", Dialog.Message.Info, null)
+        Map.empty
+      }
+    } else {
+      Dialog.showMessage(contents.head, "Select a player", "ERROR!", Dialog.Message.Info, null)
+      Map.empty
+    }
+  }
+
+  def isPlayerSelected: RadioButton = {
+    for(i <- radioPlayer) {
+      if(i.selected) return i
+    }
+    null
+  }
+
+  def isGuessValid(code: String) : Boolean = GUI.isNumber(code) && code.length == GUI.codeLength
 }
 
 object HumanPanelObj {
