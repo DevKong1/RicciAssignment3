@@ -3,7 +3,7 @@ package MasterMind.View
 import java.awt.Color
 
 import MasterMind.Model.GameController
-import MasterMind.Utility.{Code, GuessMsg, InitializeControllerMsg, Msg}
+import MasterMind.Utility.{Code, InitializeControllerMsg, Msg}
 import akka.actor.typed.ActorSystem
 import javax.swing.border.LineBorder
 
@@ -156,8 +156,7 @@ class HumanPanel(nPlayers: Int) extends BoxPanel(Orientation.Vertical) {
 
   contents += new BoxPanel(Orientation.Horizontal) {
     contents += new Label("Select a player: ")
-    println(nPlayers)
-    for (i <- 0 until nPlayers) {
+    for (i <- 0 until nPlayers-1) {
       radioPlayer += new RadioButton(" Player" + i) {
         reactions += {
           case ButtonClicked(_) => for(a <- radioPlayer) a.selected = false; selected = true
@@ -177,7 +176,7 @@ class HumanPanel(nPlayers: Int) extends BoxPanel(Orientation.Vertical) {
     val player: RadioButton = isPlayerSelected
     if(player != null) {
       if(isGuessValid(selectNumber.text)) {
-        guess += (player.text -> Code(selectNumber.text))
+        guess += (player.text.replaceAll("\\s+", "") -> Code(selectNumber.text))
         guess
       } else {
         Dialog.showMessage(contents.head, "Select a valid number with specified length", "ERROR!", Dialog.Message.Info, null)

@@ -121,7 +121,15 @@ class UserPlayer extends Players {
   override def guess(self:ActorContext[Msg]): Unit = {
     //TODO HANDLE GUI
     var guess: Map[String, Code] = Map.empty
-    GUI.humanPanel.sendGuess.reactions += {case ButtonClicked(_) => guess = Map.empty; guess = GUI.humanPanel.getGuess; println(guess)}
+    GUI.humanPanel.sendGuess.reactions += { case ButtonClicked(_) => guess = Map.empty
+      guess = GUI.humanPanel.getGuess
+      println(guess)
+      val target = myOpponents.filter(x => x._1.path.name == guess.head._1)
+      if(target != Map.empty) {
+        codeBreaker.lastGuess = guess.head._2
+        referee ! GuessMsg(self.self, target.head._1, guess.head._2)
+      }
+    }
   }
 
   override def setupCode(opponents:List[ActorRef[Msg]],ref:ActorRef[Msg]): Unit = {
@@ -206,7 +214,7 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
     case (_,StopGameMsg()) => idle()
     case (_,AllGuessesMsg(winner,guesses)) => winCheckRoutine(winner,guesses)
       // The referee acts as an intermediary between players
-    case (context,msg: GuessMsg) =>
+    case (_,msg: GuessMsg) =>
       //TODO IMPLEMENT ANSWER TO ALL PLAYERS
       if(currentPlayer.isDefined && currentPlayer.get == msg.getSender) {
         controller ! msg
@@ -255,7 +263,7 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
     }
 
     Behaviors.receive {
-      case (ctx,GuessResponseMsg(_, player, _, response)) =>
+      case (_,GuessResponseMsg(_, player, _, response)) =>
         if(response.isCorrect) {
           if(players.size == 1) {
             winner ! VictoryConfirmMsg(winner)
@@ -292,6 +300,7 @@ class RefereeImpl(private val controllerRef: ActorRef[Msg]) extends AbstractRefe
   override def nextPlayerTurn(ctx: ActorContext[Msg]): Unit = {
     implicit val timeout: Timeout = Timeout.timeout
     currentPlayer = Option(turnManager.nextPlayer)
+    controller ! YourTurnMsg(currentPlayer.get)
     currentPlayer.get ! YourTurnMsg(currentPlayer.get)
 //    ctx.ask[Msg,Msg](currentPlayer.get, ref => YourTurnMsg(ref)) {
 //      case Success(msg: GuessMsg) => println("\n SUCCESS"); msg
@@ -371,7 +380,7 @@ class GameController {
     case msg : YourTurnMsg => GUI.logChat(msg.getPlayer.path.name + " it's your turn!")
     case msg : GuessMsg => GUI.logChat(msg.getSender.path.name + " trying to guess " + msg.getPlayer.path.name + " code -> " + msg.getGuess)
     case msg : AllGuessesMsg => GUI.logChat(msg.getPlayer.path.name + " is trying to guess all codes:\n" + msg.getGuesses.map(x => x._1 + " -> " + x._2).mkString(",\n"))
-    case msg : GuessResponseMsg => GUI.logChat("Response from " + msg.getSender.path.name + " to " + msg.getPlayer.path.name + " -> " + msg.getResponse)
+    case msg : GuessResponseMsg => GUI.logChat("Response from " + msg.getSender.path.name + " to " + msg.getPlayer.path.name + " -> " + msg.getResponse + "\n")
     case msg : TurnEnd => GUI.logChat("Player " + msg.getPlayer.path.name + " did not answer in time")
     case msg : VictoryConfirmMsg => GUI.logChat(msg.getPlayer.path.name + " just won the game! YAY!")
     case msg : VictoryDenyMsg => GUI.logChat(msg.getPlayer.path.name + " failed miserably his attempt at winning the game.")

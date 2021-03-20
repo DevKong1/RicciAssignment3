@@ -1,8 +1,5 @@
 package MasterMind.Utility
 
-import sun.security.util.Length
-
-import scala.collection.mutable
 import scala.util.Random
 
 // Mastermind Code representation
