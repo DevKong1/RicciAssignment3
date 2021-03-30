@@ -128,7 +128,7 @@ class GameBoard(withHuman: Boolean, nPlayers: Int) extends Dialog {
   startStop.xLayoutAlignment = 0.5
 
   contents = new BoxPanel(Orientation.Vertical) {
-    if(withHuman) GUI.humanPanel = HumanPanelObj(nPlayers); contents += GUI.humanPanel
+    if(withHuman) {GUI.humanPanel = HumanPanelObj(nPlayers); contents += GUI.humanPanel}
     contents += new ScrollPane(logChat)
     contents += startStop
   }

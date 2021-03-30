@@ -1,7 +1,8 @@
 package MasterMind.Model
 import MasterMind.Utility._
 import MasterMind.View.GUI
-import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
+import akka.actor.Cancellable
+import akka.actor.typed.scaladsl.{ActorContext, Behaviors, TimerScheduler}
 import akka.actor.typed.{ActorRef, Behavior}
 import akka.util.Timeout
 
@@ -186,7 +187,7 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
   var currentPlayer: Option[ActorRef[Msg]]
 
   /**Allows a player to play his turn*/
-  def nextPlayerTurn(ctx: ActorContext[Msg]):Unit
+  def nextPlayerTurn(timers: TimerScheduler[Msg]):Unit
   def playerOut(player: ActorRef[Msg]):Unit
 
   /**
@@ -204,45 +205,48 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
       case (ctx,StartGameMsg(_, newPlayers,_)) =>
         println("Ref just received startGameMsg")
         setupGame(newPlayers)
-        nextPlayerTurn(ctx)
         refereeTurn()
       case _ => Behaviors.same
     }
   }
 
-  override def refereeTurn() : Behavior[Msg] = Behaviors.receive {
-    case (_,StopGameMsg()) => idle()
-    case (_,AllGuessesMsg(winner,guesses)) => winCheckRoutine(winner,guesses)
+  override def refereeTurn() : Behavior[Msg] = Behaviors.withTimers { timers =>
+    nextPlayerTurn(timers)
+    Behaviors.receive {
+      case (_, StopGameMsg()) => idle()
+      case (_, AllGuessesMsg(winner, guesses)) => winCheckRoutine(winner, guesses)
       // The referee acts as an intermediary between players
-    case (_,msg: GuessMsg) =>
-      //TODO IMPLEMENT ANSWER TO ALL PLAYERS
-      if(currentPlayer.isDefined && currentPlayer.get == msg.getSender) {
+      case (_, msg: GuessMsg) =>
+        //TODO IMPLEMENT ANSWER TO ALL PLAYERS
+        if (currentPlayer.isDefined && currentPlayer.get == msg.getSender) {
+          timers.cancelAll()
+          controller ! msg
+          msg.getPlayer ! msg
+        } else {
+          println("Player tried to guess after Timeout")
+        }
+        Behaviors.same
+      case (_, msg: ReceivedResponseMsg) =>
+        if (currentPlayer.isDefined && currentPlayer.get == msg.getSender) {
+          nextPlayerTurn(timers)
+        } else {
+          println("Player confirmed response after Timeout")
+        }
+        Behaviors.same
+      case (_, msg: TurnEnd) =>
         controller ! msg
         msg.getPlayer ! msg
-      } else {
-        println("Player tried to guess after Timeout")
-      }
-      Behaviors.same
-    case (context, msg: ReceivedResponseMsg) =>
-      if(currentPlayer.isDefined && currentPlayer.get == msg.getSender) {
-        nextPlayerTurn(context)
-      } else {
-        println("Player confirmed response after Timeout")
-      }
-      Behaviors.same
-    case (context,msg: TurnEnd) =>
-      controller ! msg
-      msg.getPlayer ! msg
-      nextPlayerTurn(context)
-      Behaviors.same
-    case (_,msg: GuessResponseMsg) =>
-      controller ! msg
-      msg.getPlayer ! msg
-      Behaviors.same
-    case (_, msg: Msg) =>
-      controller ! msg
-      Behaviors.same
-    case _ => Behaviors.same
+        nextPlayerTurn(timers)
+        Behaviors.same
+      case (_, msg: GuessResponseMsg) =>
+        controller ! msg
+        msg.getPlayer ! msg
+        Behaviors.same
+      case (_, msg: Msg) =>
+        controller ! msg
+        Behaviors.same
+      case _ => Behaviors.same
+    }
   }
 
   /**
@@ -282,7 +286,7 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
   }
 }
 
-class RefereeImpl(private val controllerRef: ActorRef[Msg]) extends AbstractReferee{
+class RefereeImpl(private val controllerRef: ActorRef[Msg]) extends AbstractReferee {
    override val controller: ActorRef[Msg] = controllerRef
    override var currentPlayer: Option[ActorRef[Msg]] = Option.empty
    var players: Option[List[ActorRef[Msg]]] = Option.empty
@@ -297,16 +301,11 @@ class RefereeImpl(private val controllerRef: ActorRef[Msg]) extends AbstractRefe
    * If such guess isn't made, sends that user an end turn message, fails the promise of his turn and allows next
    * player to play his turn
    */
-  override def nextPlayerTurn(ctx: ActorContext[Msg]): Unit = {
-    implicit val timeout: Timeout = Timeout.timeout
+  override def nextPlayerTurn(timers: TimerScheduler[Msg]): Unit = {
     currentPlayer = Option(turnManager.nextPlayer)
     controller ! YourTurnMsg(currentPlayer.get)
     currentPlayer.get ! YourTurnMsg(currentPlayer.get)
-//    ctx.ask[Msg,Msg](currentPlayer.get, ref => YourTurnMsg(ref)) {
-//      case Success(msg: GuessMsg) => println("\n SUCCESS"); msg
-//      case Failure(_) => println(currentPlayer.get +" didn't guess in time"); TurnEnd(currentPlayer.get)
-//      case _ => TurnEnd(currentPlayer.get)
-//    }
+    timers.startSingleTimer(TurnEnd(currentPlayer.get),Timeout.timeout)
   }
 
   override def setupGame(newPlayers: List[ActorRef[Msg]]): Unit = {
