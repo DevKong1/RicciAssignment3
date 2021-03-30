@@ -18,8 +18,8 @@ object Timeout {
  */
 sealed trait Player[T,K] {
   def idle():Behavior[T]
-  def waitTurn(mySecretNumber:K):Behavior[T]
-  def myTurn(mySecretNumber:K):Behavior[T]
+  def waitTurn():Behavior[T]
+  def myTurn():Behavior[T]
   def referee:ActorRef[T]
 }
 
@@ -31,6 +31,7 @@ abstract class Players extends Player[Msg,Code] {
   def guess(self: ActorContext[Msg]): Unit
 
   def setupCode(opponents: List[ActorRef[Msg]], referee: ActorRef[Msg]): Unit
+  def handleResponse(ctx: ActorContext[Msg], response: Option[Response], sender: Option[ActorRef[Msg]]): Unit
 
   var referee: ActorRef[Msg]
   var myOpponents: Map[ActorRef[Msg], (Code, Boolean)]
@@ -48,7 +49,7 @@ abstract class Players extends Player[Msg,Code] {
       case (ctx, StartGameMsg(_, opponents, ref)) =>
         println("I'm actor " + ctx.self + " and someone told me things are 'bout to get serious!")
         setupCode(opponents.filter(x => x != ctx.self), ref)
-        waitTurn(myCode);
+        waitTurn()
       case _ => Behaviors.same
     }
 
@@ -57,14 +58,13 @@ abstract class Players extends Player[Msg,Code] {
   /**
    * State in which player's are waiting for their turn
    *
-   * @param mySecretNumber my secret number
    * @return //
    */
-  def waitTurn(mySecretNumber: Code): Behavior[Msg] = Behaviors.receive {
+  def waitTurn(): Behavior[Msg] = Behaviors.receive {
     case (ctx, _: YourTurnMsg) =>
       println(ctx.self + " starting a turn!")
       guess(ctx)
-      myTurn(mySecretNumber)
+      myTurn()
     // Received a guess from another player, send response to referee
     case (ctx, GuessMsg(sender, _, code)) =>
       println(ctx.self + " just received a guess msg, sending response!")
@@ -77,30 +77,17 @@ abstract class Players extends Player[Msg,Code] {
   /**
    * State representing player's turn and actions
    *
-   * @param mySecretNumber my secret number
    * @return
    */
-  def myTurn(mySecretNumber: Code): Behavior[Msg] = Behaviors.receive {
+  def myTurn(): Behavior[Msg] = Behaviors.receive {
     case (ctx, GuessResponseMsg(sender, _ , _ , response)) =>
       referee ! ReceivedResponseMsg(ctx.self)
-      codeBreaker.receiveKey(response)
-      if(response.isCorrect) {
-        myOpponents = myOpponents.map { el =>
-          if(el._1 == sender)
-            (el._1, (codeBreaker.lastGuess,true))
-          else el
-        }
-        if(myOpponents.values.map(_._2).reduce(_&_)) {
-          referee ! AllGuessesMsg(ctx.self,myOpponents.map(x=> x._1 -> x._2._1))
-        } else {
-          codeBreaker = CodeBreakerImplObj(myCode.getRange) //TODO check if such change is reflected into myOpponents
-        }
-      }
-      waitTurn(mySecretNumber)
-    case (ctx, _: VictoryConfirmMsg) =>
-      println(ctx.self + ": told ya I was gonna win this")
-      idle(); //TODO
-    case (cx, _: StopGameMsg) => println(cx.self + " Stopping..."); idle();
+      handleResponse(ctx, Option(response), Option(sender))
+      waitTurn()
+    case(ctx, _: TurnEnd) =>
+      handleResponse(ctx, Option.empty, Option.empty)
+      waitTurn()
+    case (ctx, _: StopGameMsg) => println(ctx.self + " Stopping..."); idle();
     case (ctx, GuessMsg(sender, _, code)) =>
       println(ctx.self + " just received a guess msg, sending response!")
       referee ! GuessResponseMsg(ctx.self, sender, code, myCode.getResponse(code))
@@ -134,6 +121,10 @@ class UserPlayer extends Players {
     myOpponents = opponents.map(x => x->(Code(),false)).toMap
     referee = ref
   }
+
+  override def handleResponse(ctx: ActorContext[Msg], response: Option[Response], sender: Option[ActorRef[Msg]]): Unit = {
+    //TODO VISUALIZE WITH GUI
+  }
 }
 
 object UserPlayer {
@@ -150,7 +141,11 @@ class AIPlayer extends Players {
   override def guess(ctx: ActorContext[Msg]): Unit = {
     val target = myOpponents.find(x => !x._2._2)
     if (target.isDefined) {
-      referee ! GuessMsg(ctx.self, target.get._1, codeBreaker.guess)
+      if(storedGuess.isDefined) {
+        referee ! GuessMsg(ctx.self, target.get._1, storedGuess.get)
+        storedGuess = Option.empty
+      } else
+        referee ! GuessMsg(ctx.self, target.get._1, codeBreaker.guess)
     } else {
       referee ! AllGuessesMsg(ctx.self,myOpponents map { case (actor, code -> _) => actor->code })
     }
@@ -159,6 +154,26 @@ class AIPlayer extends Players {
   override def setupCode(opponents:List[ActorRef[Msg]],ref:ActorRef[Msg]): Unit = {
     myOpponents = opponents.map(x => x->(Code(),false)).toMap
     referee = ref
+  }
+
+  override def handleResponse(ctx: ActorContext[Msg], response: Option[Response], sender: Option[ActorRef[Msg]]): Unit = {
+    if(response.isDefined) {
+      codeBreaker.receiveKey(response.get)
+      if (response.get.isCorrect) {
+        myOpponents = myOpponents.map { el =>
+          if (el._1 == sender.get)
+            (el._1, (codeBreaker.lastGuess, true))
+          else el
+        }
+        if (myOpponents.values.map(_._2).reduce(_ & _)) {
+          referee ! AllGuessesMsg(ctx.self, myOpponents.map(x => x._1 -> x._2._1))
+        } else {
+          codeBreaker = CodeBreakerImplObj(myCode.getRange) //TODO check if such change is reflected into myOpponents
+        }
+      }
+    } else {
+      storedGuess = Option(codeBreaker.lastGuess)
+    }
   }
 }
 
