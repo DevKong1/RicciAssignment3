@@ -1,14 +1,11 @@
 package MasterMind.Model
 import MasterMind.Utility._
 import MasterMind.View.GUI
-import akka.actor.Cancellable
 import akka.actor.typed.scaladsl.{ActorContext, Behaviors, TimerScheduler}
 import akka.actor.typed.{ActorRef, Behavior}
-import akka.util.Timeout
 
 import scala.concurrent.duration._
 import scala.swing.event.ButtonClicked
-import scala.util.{Failure, Success}
 
 object Timeout {
   final val timeout = 10.seconds
@@ -175,7 +172,7 @@ sealed trait Referee[T,K]{
    */
   def idle():Behavior[T]
   def refereeTurn():Behavior[T]
-  def winCheckRoutine(winner:ActorRef[T],players: Map[ActorRef[T],K]) :Behavior[T]
+  def winCheckRoutine(ctx: ActorContext[Msg], winner:ActorRef[T], guesses: Map[ActorRef[T],K]) :Behavior[T]
   def players:Option[List[ActorRef[T]]]
 }
 /**
@@ -185,15 +182,13 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
 
   val controller: ActorRef[Msg]
   var currentPlayer: Option[ActorRef[Msg]]
+  var players: Option[List[ActorRef[Msg]]]
 
-  /**Allows a player to play his turn*/
+  /** Allows a player to play his turn*/
   def nextPlayerTurn(timers: TimerScheduler[Msg]):Unit
-  def playerOut(player: ActorRef[Msg]):Unit
 
-  /**
-   * players in game with their secret code
-   */
-  var players:Option[List[ActorRef[Msg]]]
+  /** Excludes a player */
+  def playerOut(player: ActorRef[Msg]):Unit
 
   def setupGame(players:List[ActorRef[Msg]]):Unit
   /**
@@ -202,7 +197,7 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
   override def idle() : Behavior[Msg] = {
     println("Referee has been spawned!")
     Behaviors.receive{
-      case (ctx,StartGameMsg(_, newPlayers,_)) =>
+      case (_,StartGameMsg(_, newPlayers,_)) =>
         println("Ref just received startGameMsg")
         setupGame(newPlayers)
         refereeTurn()
@@ -214,7 +209,7 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
     nextPlayerTurn(timers)
     Behaviors.receive {
       case (_, StopGameMsg()) => idle()
-      case (_, AllGuessesMsg(winner, guesses)) => winCheckRoutine(winner, guesses)
+      case (ctx, AllGuessesMsg(winner, guesses)) => winCheckRoutine(ctx, winner, guesses)
       // The referee acts as an intermediary between players
       case (_, msg: GuessMsg) =>
         //TODO IMPLEMENT ANSWER TO ALL PLAYERS
@@ -254,34 +249,37 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
    *  https://doc.akka.io/docs/akka/current/typed/interaction-patterns.html#request-response-with-ask-from-outside-an-actor
    *  )
    * @param winner actor who claims to have won
-   * @param players list of other players and their alleged secret code
+   * @param guesses list of other players and their alleged secret code
    * @return //
    */
-  override def winCheckRoutine(winner:ActorRef[Msg],players: Map[ActorRef[Msg], Code]): Behavior[Msg] = Behaviors.setup{ ctx =>
-    implicit val timeout: Timeout = Timeout.timeout
-    case class AdaptedResponse(message: String) extends Msg
-
-    ctx.ask[Msg,Msg](players.keySet.head, ref => GuessMsg(ref, players.keySet.head, players.values.head)){
-      case Success(c: GuessResponseMsg) => c
-      case _ => AdaptedResponse("Failure")
+  override def winCheckRoutine(ctx: ActorContext[Msg], winner:ActorRef[Msg], guesses: Map[ActorRef[Msg], Code]): Behavior[Msg] = {
+    if(players.isEmpty) {
+      idle()
+    }
+    var responses = players.get.size - 1
+    for(player <- guesses) {
+      player._1 ! GuessMsg(ctx.self,player._1,player._2)
     }
 
     Behaviors.receive {
-      case (_,GuessResponseMsg(_, player, _, response)) =>
+      case (_,GuessResponseMsg(_, _, _, response)) =>
         if(response.isCorrect) {
-          if(players.size == 1) {
-            winner ! VictoryConfirmMsg(winner)
-            println(winner +" just incredibly won!")
+          if(responses - 1 == 0) {
+            controller ! VictoryConfirmMsg(winner)
+            for(player <- players.get) {
+              player ! StopGameMsg()
+            }
             idle()
           } else {
-            winCheckRoutine(winner,players-player)
+            responses = responses-1
+            Behaviors.same
           }
        } else {
           winner ! VictoryDenyMsg(winner)
           playerOut(winner)
           refereeTurn()
         }
-      case _ => println("Something went bad during win check routine,initializing it again"); winCheckRoutine(winner,players)
+      case _ => println("Something went bad during win check routine,initializing it again"); winCheckRoutine(ctx, winner, guesses)
     }
   }
 }
@@ -289,7 +287,7 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
 class RefereeImpl(private val controllerRef: ActorRef[Msg]) extends AbstractReferee {
    override val controller: ActorRef[Msg] = controllerRef
    override var currentPlayer: Option[ActorRef[Msg]] = Option.empty
-   var players: Option[List[ActorRef[Msg]]] = Option.empty
+   override var players: Option[List[ActorRef[Msg]]] = Option.empty
 
    var turnManager: TurnManager = TurnManager()
 
@@ -303,9 +301,11 @@ class RefereeImpl(private val controllerRef: ActorRef[Msg]) extends AbstractRefe
    */
   override def nextPlayerTurn(timers: TimerScheduler[Msg]): Unit = {
     currentPlayer = Option(turnManager.nextPlayer)
-    controller ! YourTurnMsg(currentPlayer.get)
-    currentPlayer.get ! YourTurnMsg(currentPlayer.get)
-    timers.startSingleTimer(TurnEnd(currentPlayer.get),Timeout.timeout)
+    if(currentPlayer.isDefined) {
+      controller ! YourTurnMsg(currentPlayer.get)
+      currentPlayer.get ! YourTurnMsg(currentPlayer.get)
+      timers.startSingleTimer(TurnEnd(currentPlayer.get),Timeout.timeout)
+    }
   }
 
   override def setupGame(newPlayers: List[ActorRef[Msg]]): Unit = {
