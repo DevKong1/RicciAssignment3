@@ -67,9 +67,32 @@ case class GuessResponseMsg(private val sender: ActorRef[Msg], private val playe
 object GuessResponseMsg {
  def apply(sender: ActorRef[Msg], player: ActorRef[Msg], guess: Code, response: Response): GuessResponseMsg = new GuessResponseMsg(sender, player, guess, response)
 }
+
 case class TurnEnd(player:ActorRef[Msg]) extends Msg {
  def getPlayer: ActorRef[Msg] = player
 }
+
+case class WinCheckMsg(private val sender: ActorRef[Msg], private val player: ActorRef[Msg], private val guess: Code) extends Msg {
+ def getSender: ActorRef[Msg] = sender
+ def getPlayer: ActorRef[Msg] = player
+ def getGuess: Code = guess
+}
+
+object WinCheckMsg {
+ def apply(sender: ActorRef[Msg], player: ActorRef[Msg], guess: Code): WinCheckMsg = new WinCheckMsg(sender, player, guess)
+}
+
+case class WinCheckResponseMsg(private val sender: ActorRef[Msg], private val player: ActorRef[Msg], private val guess: Code, private val response: Response) extends Msg {
+ def getSender: ActorRef[Msg] = sender
+ def getPlayer: ActorRef[Msg] = player
+ def getGuess: Code = guess
+ def getResponse: Response = response
+}
+
+object WinCheckResponseMsg {
+ def apply(sender: ActorRef[Msg], player: ActorRef[Msg], guess: Code, response: Response): WinCheckResponseMsg = new WinCheckResponseMsg(sender, player, guess, response)
+}
+
 case class VictoryConfirmMsg(private val player: ActorRef[Msg]) extends Msg {
  def getPlayer: ActorRef[Msg] = player
 }

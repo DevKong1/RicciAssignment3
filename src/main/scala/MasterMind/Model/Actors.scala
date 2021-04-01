@@ -50,6 +50,10 @@ abstract class Players extends Player[Msg,Code] {
         println("I'm actor " + ctx.self + " and someone told me things are 'bout to get serious!")
         setupCode(opponents.filter(x => x != ctx.self), ref)
         waitTurn()
+      case (ctx, WinCheckMsg(sender, _, code)) =>
+        println(ctx.self + " just received a win check msg, sending response!")
+        referee ! WinCheckResponseMsg(ctx.self, sender, code, myCode.getResponse(code))
+        Behaviors.same
       case (ctx, _: StopGameMsg) => println(ctx.self + " Stopping..."); Behaviors.stopped;
       case _ => Behaviors.same
     }
@@ -71,6 +75,11 @@ abstract class Players extends Player[Msg,Code] {
       println(ctx.self + " just received a guess msg, sending response!")
       referee ! GuessResponseMsg(ctx.self, sender, code, myCode.getResponse(code))
       Behaviors.same
+    case (ctx, WinCheckMsg(sender, _, code)) =>
+      println(ctx.self + " just received a win check msg, sending response!")
+      referee ! WinCheckResponseMsg(ctx.self, sender, code, myCode.getResponse(code))
+      Behaviors.same
+    case (ctx, _: VictoryDenyMsg) => println(ctx.self + " failed to win, stopping..."); idle();
     case (ctx, _: StopGameMsg) => println(ctx.self + " Stopping..."); Behaviors.stopped;
     case _ => Behaviors.same
   }
@@ -82,8 +91,8 @@ abstract class Players extends Player[Msg,Code] {
    */
   def myTurn(): Behavior[Msg] = Behaviors.receive {
     case (ctx, GuessResponseMsg(sender, _ , _ , response)) =>
-      referee ! ReceivedResponseMsg(ctx.self)
       handleResponse(ctx, Option(response), Option(sender))
+      referee ! ReceivedResponseMsg(ctx.self)
       waitTurn()
     case(ctx, _: TurnEnd) =>
       handleResponse(ctx, Option.empty, Option.empty)
@@ -92,6 +101,11 @@ abstract class Players extends Player[Msg,Code] {
       println(ctx.self + " just received a guess msg, sending response!")
       referee ! GuessResponseMsg(ctx.self, sender, code, myCode.getResponse(code))
       Behaviors.same
+    case (ctx, WinCheckMsg(sender, _, code)) =>
+      println(ctx.self + " just received a win check msg, sending response!")
+      referee ! WinCheckResponseMsg(ctx.self, sender, code, myCode.getResponse(code))
+      Behaviors.same
+    case (_, _: VictoryDenyMsg) => println("Failed to win, stopping..."); idle();
     case (ctx, _: StopGameMsg) => println(ctx.self + " Stopping..."); Behaviors.stopped;
     case _ => Behaviors.same
   }
@@ -148,7 +162,8 @@ class AIPlayer extends Players {
       } else
         referee ! GuessMsg(ctx.self, target.get._1, codeBreaker.guess)
     } else {
-      referee ! AllGuessesMsg(ctx.self,myOpponents map { case (actor, code -> _) => actor->code })
+      println(ctx.self + " got all answers!")
+      referee ! AllGuessesMsg(ctx.self, myOpponents map { case (actor, code -> _) => actor->code })
     }
   }
 
@@ -166,7 +181,7 @@ class AIPlayer extends Players {
             (el._1, (codeBreaker.lastGuess, true))
           else el
         }
-        if (myOpponents.values.map(_._2).reduce(_ & _)) {
+        if (!myOpponents.values.map(_._2).reduce(_ & _)) {
           referee ! AllGuessesMsg(ctx.self, myOpponents.map(x => x._1 -> x._2._1))
         } else {
           codeBreaker = CodeBreakerImplObj(myCode.getRange) //TODO check if such change is reflected into myOpponents
@@ -291,17 +306,14 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
     }
     var responses = players.get.size - 1
     for(player <- guesses) {
-      player._1 ! GuessMsg(ctx.self,player._1,player._2)
+      player._1 ! WinCheckMsg(ctx.self,player._1,player._2)
     }
 
     Behaviors.receive {
-      case (_,GuessResponseMsg(_, _, _, response)) =>
+      case (_,WinCheckResponseMsg(_, _, _, response)) =>
         if(response.isCorrect) {
           if(responses - 1 == 0) {
             controller ! VictoryConfirmMsg(winner)
-            for(player <- players.get) {
-              player ! StopGameMsg()
-            }
             idle()
           } else {
             responses = responses-1
@@ -321,7 +333,7 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
         }
         Behaviors.stopped
       }
-      case _ => println("Something went bad during win check routine,initializing it again"); winCheckRoutine(ctx, winner, guesses)
+      case _ => Behaviors.same
     }
   }
 }
@@ -355,7 +367,11 @@ class RefereeImpl(private val controllerRef: ActorRef[Msg]) extends AbstractRefe
     turnManager.setPlayers(newPlayers)
   }
 
-  override def playerOut(player: ActorRef[Msg]): Unit = {players = Some(players.get.filter(el => el != player)); println("Player failed to win, removing him, now players size = "+players.size); turnManager.removePlayer(player)}
+  override def playerOut(player: ActorRef[Msg]): Unit = {
+    players = Option(players.get.filter(el => el != player))
+    turnManager.removePlayer(player)
+    println(player + " failed to win, removing him, now players size = " + players.size)
+  }
 }
 object Referee{
   def apply(controller: ActorRef[Msg]): Behavior[Msg] = new RefereeImpl(controller).idle()
@@ -405,6 +421,10 @@ class GameController {
         GUI.logChat("Critical error: Referee Not initialized")
         Behaviors.same
       }
+    case (ctx, msg: VictoryConfirmMsg) =>
+      logChat(msg)
+      ctx.self ! StopGameMsg()
+      Behaviors.same
     case (_, msg: Msg) =>
       logChat(msg)
       Behaviors.same
