@@ -3,7 +3,8 @@ package MasterMind.View
 import java.awt.Color
 
 import MasterMind.Model.GameController
-import MasterMind.Utility.{Code, InitializeControllerMsg, Msg}
+import MasterMind.Utility.{Code, InitializeControllerMsg, Msg, StopGameMsg}
+import akka.actor.ActorRef
 import akka.actor.typed.ActorSystem
 import javax.swing.border.LineBorder
 
@@ -14,7 +15,7 @@ import scala.swing.{BoxPanel, Button, CheckBox, Dialog, Dimension, FlowPanel, Fo
 
 object GUI extends MainFrame {
 
-  val gameSystem: ActorSystem[Msg] = ActorSystem(GameController(), "GameSystem")
+  var gameSystem: ActorSystem[Msg] = ActorSystem(GameController(), "GameSystem")
   var gameBoard: GameBoard = _
   var humanPanel: HumanPanel = _
   var codeLength: Int = _
@@ -119,8 +120,10 @@ class GameBoard(withHuman: Boolean, nPlayers: Int) extends Dialog {
   var startStop: Button = new Button("Stop") {
     reactions += {
       case ButtonClicked(_) => startStop.text match {
-        case "Stop" => startStop.text ="Start"; println("Stop the game")
-        case _ => startStop.text ="Stop"; println("Resume the game")
+        case "Stop" => startStop.text ="Start"; GUI.gameSystem ! StopGameMsg()
+        case _ => startStop.text ="Stop"; logChat.text = "GAME IS STARTED!"
+          GUI.gameSystem = ActorSystem(GameController(), "GameSystem")
+          GUI.gameSystem ! InitializeControllerMsg(nPlayers, GUI.codeLength, withHuman, sharedResponses = false)
       }
     }
   }

@@ -2,7 +2,7 @@ package MasterMind.Model
 import MasterMind.Utility._
 import MasterMind.View.GUI
 import akka.actor.typed.scaladsl.{ActorContext, Behaviors, TimerScheduler}
-import akka.actor.typed.{ActorRef, Behavior}
+import akka.actor.typed.{ActorRef, ActorSystem, Behavior}
 
 import scala.concurrent.duration._
 import scala.swing.event.ButtonClicked
@@ -50,6 +50,7 @@ abstract class Players extends Player[Msg,Code] {
         println("I'm actor " + ctx.self + " and someone told me things are 'bout to get serious!")
         setupCode(opponents.filter(x => x != ctx.self), ref)
         waitTurn()
+      case (ctx, _: StopGameMsg) => println(ctx.self + " Stopping..."); Behaviors.stopped;
       case _ => Behaviors.same
     }
 
@@ -70,7 +71,7 @@ abstract class Players extends Player[Msg,Code] {
       println(ctx.self + " just received a guess msg, sending response!")
       referee ! GuessResponseMsg(ctx.self, sender, code, myCode.getResponse(code))
       Behaviors.same
-    case (cx, _: StopGameMsg) => println(cx.self + " Stopping..."); idle();
+    case (ctx, _: StopGameMsg) => println(ctx.self + " Stopping..."); Behaviors.stopped;
     case _ => Behaviors.same
   }
 
@@ -87,11 +88,11 @@ abstract class Players extends Player[Msg,Code] {
     case(ctx, _: TurnEnd) =>
       handleResponse(ctx, Option.empty, Option.empty)
       waitTurn()
-    case (ctx, _: StopGameMsg) => println(ctx.self + " Stopping..."); idle();
     case (ctx, GuessMsg(sender, _, code)) =>
       println(ctx.self + " just received a guess msg, sending response!")
       referee ! GuessResponseMsg(ctx.self, sender, code, myCode.getResponse(code))
       Behaviors.same
+    case (ctx, _: StopGameMsg) => println(ctx.self + " Stopping..."); Behaviors.stopped;
     case _ => Behaviors.same
   }
 }
@@ -216,6 +217,15 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
         println("Ref just received startGameMsg")
         setupGame(newPlayers)
         refereeTurn()
+      case (ctx, msg: StopGameMsg) => {
+        println(ctx.self + " Stopping...")
+        if(players.isDefined) {
+          for (player <- players.get) {
+            player ! msg
+          }
+        }
+        Behaviors.stopped
+      }
       case _ => Behaviors.same
     }
   }
@@ -223,7 +233,6 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
   override def refereeTurn() : Behavior[Msg] = Behaviors.withTimers { timers =>
     nextPlayerTurn(timers)
     Behaviors.receive {
-      case (_, StopGameMsg()) => idle()
       case (ctx, AllGuessesMsg(winner, guesses)) => winCheckRoutine(ctx, winner, guesses)
       // The referee acts as an intermediary between players
       case (_, msg: GuessMsg) =>
@@ -252,6 +261,15 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
         controller ! msg
         msg.getPlayer ! msg
         Behaviors.same
+      case (ctx, msg: StopGameMsg) => {
+        println(ctx.self + " Stopping...")
+        if(players.isDefined) {
+          for (player <- players.get) {
+            player ! msg
+          }
+        }
+        Behaviors.stopped
+      }
       case (_, msg: Msg) =>
         controller ! msg
         Behaviors.same
@@ -294,6 +312,15 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
           playerOut(winner)
           refereeTurn()
         }
+      case (ctx, msg: StopGameMsg) => {
+        println(ctx.self + " Stopping...")
+        if(players.isDefined) {
+          for (player <- players.get) {
+            player ! msg
+          }
+        }
+        Behaviors.stopped
+      }
       case _ => println("Something went bad during win check routine,initializing it again"); winCheckRoutine(ctx, winner, guesses)
     }
   }
@@ -373,7 +400,7 @@ class GameController {
       if(referee.isDefined) {
         referee.get ! msg
         GUI.logChat("The game has been stopped")
-        noGameBehavior()
+        Behaviors.stopped
       } else {
         GUI.logChat("Critical error: Referee Not initialized")
         Behaviors.same
