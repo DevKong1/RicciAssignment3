@@ -4,7 +4,6 @@ import java.awt.Color
 
 import MasterMind.Model.GameController
 import MasterMind.Utility.{Code, InitializeControllerMsg, Msg, StopGameMsg}
-import akka.actor.ActorRef
 import akka.actor.typed.ActorSystem
 import javax.swing.border.LineBorder
 
@@ -179,7 +178,7 @@ class HumanPanel(nPlayers: Int) extends BoxPanel(Orientation.Vertical) {
     val player: RadioButton = isPlayerSelected
     if(player != null) {
       if(isGuessValid(selectNumber.text)) {
-        guess += (player.text.replaceAll("\\s+", "") -> Code(selectNumber.text))
+        guess += (player.text.replaceAll("\\s+", "") -> Code(selectNumber.text.length, selectNumber.text))
         guess
       } else {
         Dialog.showMessage(contents.head, "Select a valid number with specified length", "ERROR!", Dialog.Message.Info, null)

@@ -2,7 +2,7 @@ package MasterMind.Model
 import MasterMind.Utility._
 import MasterMind.View.GUI
 import akka.actor.typed.scaladsl.{ActorContext, Behaviors, TimerScheduler}
-import akka.actor.typed.{ActorRef, ActorSystem, Behavior}
+import akka.actor.typed.{ActorRef, Behavior}
 
 import scala.concurrent.duration._
 import scala.swing.event.ButtonClicked
@@ -30,13 +30,18 @@ abstract class Players extends Player[Msg,Code] {
 
   def guess(self: ActorContext[Msg]): Unit
 
-  def setupCode(opponents: List[ActorRef[Msg]], referee: ActorRef[Msg]): Unit
+  def setupCode(length:Int, opponents: List[ActorRef[Msg]], referee: ActorRef[Msg]): Unit
   def handleResponse(ctx: ActorContext[Msg], response: Option[Response], sender: Option[ActorRef[Msg]]): Unit
 
   var referee: ActorRef[Msg]
   var myOpponents: Map[ActorRef[Msg], (Code, Boolean)]
   var myCode: Code
-  var codeBreaker: CodeBreakerImpl
+
+  case class PimpedResponse(response: Response) {
+    def isCorrect: Boolean = response.getBlack == myCode.getLength
+  }
+
+  implicit def pimpResponse(response: Response): PimpedResponse = PimpedResponse(response)
 
   /**
    * Player's secret number, evaluated once on first invocation
@@ -46,9 +51,9 @@ abstract class Players extends Player[Msg,Code] {
   override def idle(): Behavior[Msg] = {
     println("Hey I'm an actor and I've been spawned!")
     Behaviors.receive {
-      case (ctx, StartGameMsg(_, opponents, ref)) =>
+      case (ctx, StartGameMsg(codeLength, _, opponents, ref)) =>
         println("I'm actor " + ctx.self + " and someone told me things are 'bout to get serious!")
-        setupCode(opponents.filter(x => x != ctx.self), ref)
+        setupCode(codeLength, opponents.filter(x => x != ctx.self), ref)
         waitTurn()
       case (ctx, WinCheckMsg(sender, _, code)) =>
         println(ctx.self + " just received a win check msg, sending response!")
@@ -113,9 +118,8 @@ abstract class Players extends Player[Msg,Code] {
 
 
 class UserPlayer extends Players {
-  override var myCode: Code = Code()
-  override var codeBreaker: CodeBreakerImpl = _
-  override var myOpponents:Map[ActorRef[Msg],(Code,Boolean)] = Map.empty
+  override var myCode: Code = _
+  override var myOpponents: Map[ActorRef[Msg],(Code,Boolean)] = Map.empty
   var referee: ActorRef[Msg] = _
   var myLastGuess: Code = _
 
@@ -137,8 +141,9 @@ class UserPlayer extends Players {
     }
   }
 
-  override def setupCode(opponents:List[ActorRef[Msg]],ref:ActorRef[Msg]): Unit = {
-    myOpponents = opponents.map(x => x->(Code(),false)).toMap
+  override def setupCode(length: Int, opponents: List[ActorRef[Msg]], ref: ActorRef[Msg]): Unit = {
+    myCode = Code(length)
+    myOpponents = opponents.map(x => x->(Code(length),false)).toMap
     referee = ref
   }
 
@@ -162,12 +167,11 @@ object UserPlayer {
 }
 
 class AIPlayer extends Players {
-  override var myCode: Code = Code()
-  override var codeBreaker: CodeBreakerImpl = CodeBreakerImplObj(myCode.getRange)
+  override var myCode: Code = _
   override var myOpponents:Map[ActorRef[Msg],(Code,Boolean)] = Map.empty
+  var codeBreaker: CodeBreakerImpl = _
   var storedGuess: Option[Code] = Option.empty
   var referee: ActorRef[Msg] = _
-  println(myCode)
 
   override def guess(ctx: ActorContext[Msg]): Unit = {
     val target = myOpponents.find(x => !x._2._2)
@@ -175,13 +179,18 @@ class AIPlayer extends Players {
       if(storedGuess.isDefined) {
         referee ! GuessMsg(ctx.self, target.get._1, storedGuess.get)
         storedGuess = Option.empty
-      } else
-        referee ! GuessMsg(ctx.self, target.get._1, codeBreaker.guess)
+      } else {
+        val guess = codeBreaker.guess
+        if(guess.isDefined)
+          referee ! GuessMsg(ctx.self, target.get._1, guess.get)
+      }
     }
   }
 
-  override def setupCode(opponents:List[ActorRef[Msg]],ref:ActorRef[Msg]): Unit = {
-    myOpponents = opponents.map(x => x->(Code(),false)).toMap
+  override def setupCode(length:Int, opponents: List[ActorRef[Msg]], ref: ActorRef[Msg]): Unit = {
+    myCode = Code(length)
+    codeBreaker = CodeBreakerImplObj(length, myCode.getRange)
+    myOpponents = opponents.map(x => x->(Code(length),false)).toMap
     referee = ref
   }
 
@@ -191,17 +200,17 @@ class AIPlayer extends Players {
       if (response.get.isCorrect) {
         myOpponents = myOpponents.map { el =>
           if (el._1 == sender.get)
-            (el._1, (codeBreaker.lastGuess, true))
+            (el._1, (codeBreaker.lastGuess.get, true))
           else el
         }
         if (myOpponents.values.map(_._2).reduce(_ & _)) {
           referee ! AllGuessesMsg(ctx.self, myOpponents.map(x => x._1 -> x._2._1))
         } else {
-          codeBreaker = CodeBreakerImplObj(myCode.getRange) //TODO check if such change is reflected into myOpponents
+          codeBreaker = CodeBreakerImplObj(myCode.getLength, myCode.getRange) //TODO check if such change is reflected into myOpponents
         }
       }
-    } else {
-      storedGuess = Option(codeBreaker.lastGuess)
+    } else if(codeBreaker.lastGuess.isDefined) {
+      storedGuess = codeBreaker.lastGuess
     }
   }
 }
@@ -223,10 +232,16 @@ sealed trait Referee[T,K]{
  * Game's corrupted referee
  */
 abstract class AbstractReferee extends Referee[Msg,Code] {
-
   val controller: ActorRef[Msg]
+  var codeLength: Option[Int]
   var currentPlayer: Option[ActorRef[Msg]]
   var players: Option[List[ActorRef[Msg]]]
+
+  case class PimpedResponse(response: Response) {
+    def isCorrect: Boolean = if(codeLength.isDefined) response.getBlack == codeLength.get else false
+  }
+
+  implicit def pimpResponse(response: Response): PimpedResponse = PimpedResponse(response)
 
   /** Allows a player to play his turn*/
   def nextPlayerTurn(timers: TimerScheduler[Msg]):Unit
@@ -234,18 +249,18 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
   /** Excludes a player */
   def playerOut(player: ActorRef[Msg]):Unit
 
-  def setupGame(players:List[ActorRef[Msg]]):Unit
+  def setupGame(length:Int, players:List[ActorRef[Msg]]):Unit
   /**
    *
    */
   override def idle() : Behavior[Msg] = {
     println("Referee has been spawned!")
     Behaviors.receive{
-      case (_,StartGameMsg(_, newPlayers,_)) =>
+      case (_,StartGameMsg(codeLength, _, newPlayers,_)) =>
         println("Ref just received startGameMsg")
-        setupGame(newPlayers)
+        setupGame(codeLength, newPlayers)
         refereeTurn()
-      case (ctx, msg: StopGameMsg) => {
+      case (ctx, msg: StopGameMsg) =>
         println(ctx.self + " Stopping...")
         if(players.isDefined) {
           for (player <- players.get) {
@@ -253,7 +268,6 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
           }
         }
         Behaviors.stopped
-      }
       case _ => Behaviors.same
     }
   }
@@ -264,7 +278,6 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
       case (ctx, AllGuessesMsg(winner, guesses)) => winCheckRoutine(ctx, winner, guesses)
       // The referee acts as an intermediary between players
       case (_, msg: GuessMsg) =>
-        //TODO IMPLEMENT ANSWER TO ALL PLAYERS
         if (currentPlayer.isDefined && currentPlayer.get == msg.getSender) {
           timers.cancelAll()
           controller ! msg
@@ -289,7 +302,7 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
         controller ! msg
         msg.getPlayer ! msg
         Behaviors.same
-      case (ctx, msg: StopGameMsg) => {
+      case (ctx, msg: StopGameMsg) =>
         println(ctx.self + " Stopping...")
         if(players.isDefined) {
           for (player <- players.get) {
@@ -297,7 +310,6 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
           }
         }
         Behaviors.stopped
-      }
       case (_, msg: Msg) =>
         controller ! msg
         Behaviors.same
@@ -337,7 +349,7 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
           playerOut(winner)
           refereeTurn()
         }
-      case (ctx, msg: StopGameMsg) => {
+      case (ctx, msg: StopGameMsg) =>
         println(ctx.self + " Stopping...")
         if(players.isDefined) {
           for (player <- players.get) {
@@ -345,13 +357,13 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
           }
         }
         Behaviors.stopped
-      }
       case _ => Behaviors.same
     }
   }
 }
 
 class RefereeImpl(private val controllerRef: ActorRef[Msg]) extends AbstractReferee {
+   override var codeLength: Option[Int] = Option.empty
    override val controller: ActorRef[Msg] = controllerRef
    override var currentPlayer: Option[ActorRef[Msg]] = Option.empty
    override var players: Option[List[ActorRef[Msg]]] = Option.empty
@@ -375,7 +387,8 @@ class RefereeImpl(private val controllerRef: ActorRef[Msg]) extends AbstractRefe
     }
   }
 
-  override def setupGame(newPlayers: List[ActorRef[Msg]]): Unit = {
+  override def setupGame(length: Int, newPlayers: List[ActorRef[Msg]]): Unit = {
+    codeLength = Option(length)
     players = Option(newPlayers) //TODO FOR EACH PLAYER GET CODE
     turnManager.setPlayers(newPlayers)
   }
@@ -399,7 +412,6 @@ class GameController {
     // Initialize game msg
     case (context, msg: InitializeControllerMsg) =>
       println("Received Init Msg") //TODO JUST DEBUG MSG
-      Code.setLength(msg.getLength)
 
       referee = Some(context.spawn(Referee(context.self), "Referee"))//TODO CHECK
 

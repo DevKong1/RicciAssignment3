@@ -1,12 +1,9 @@
 package MasterMind.Utility
 
 // Response given by the referee to a guess
-
 class Response(private val black: Int, private val white: Int) {
   def getBlack: Int = black
   def getWhite: Int = white
-
-  def isCorrect: Boolean = black == Code().codeLength
 
   override def hashCode(): Int = {
     var hash: Int = 7

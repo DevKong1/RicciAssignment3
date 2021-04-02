@@ -5,21 +5,20 @@ import scala.util.Random
 // Mastermind Code representation
 
 class Code(length: Int) {
-  val RandomNum: Random = new Random()
-  val codeRadix: Int = 10
-  val codeLength: Int = length
-  var pegs: Array[Int] = Array.emptyIntArray
-  var codePoint: Int = 0
+  private val codeRadix: Int = 10
+  private val codeLength: Int = length
+  private var pegs: Array[Int] = Array.emptyIntArray
+  private var codePoint: Int = 0
 
   def codeRange: Int = Math.pow(codeRadix, codeLength).toInt
 
   //def getCodeRadix: Int = codeRadix
-  //def getCodeLength: Int = codeLength
+  def getLength: Int = codeLength
 
   def getRange: Set[Code] = {
     var allCodes: Set[Code] = Set()
     for(i <- 0 until codeRange) {
-      allCodes += Code(i)
+      allCodes += Code(getLength, i)
     }
     allCodes
   }
@@ -99,34 +98,29 @@ class Code(length: Int) {
 }
 
 object Code {
-  var length = 4
-  var universe: Set[Code] = Set.empty
 
-  def setLength(newLength: Int): Unit = this.length = newLength
-  def getLength: Int = this.length
-
-  def apply(): Code = {
+  def apply(length: Int): Code = {
     val code: Code = new Code(length)
     code.codePoint = Random.nextInt(code.codeRange)
     code.pegs = code.toPegs(code.codePoint)
     code
   }
 
-  def apply(codePoint: Int): Code = {
+  def apply(length: Int, codePoint: Int): Code = {
     val code: Code = new Code(length)
     code.codePoint = codePoint
     code.pegs = code.toPegs(codePoint)
     code
   }
 
-  def apply(pegs: Array[Int]): Code = {
+  def apply(length: Int, pegs: Array[Int]): Code = {
     val code: Code = new Code(length)
     code.pegs = pegs
     code.codePoint = code.toCodePoint(pegs)
     code
   }
 
-  def apply(num: String): Code = {
+  def apply(length: Int, num: String): Code = {
     val code: Code = new Code(length)
     val p: Array[Char] = num.toCharArray
     code.pegs = new Array[Int](p.length)
@@ -142,39 +136,49 @@ sealed trait CodeBreaker {
   def receiveKey(response: Response): Unit
 }
 
-class CodeBreakerImpl(codeRange: Set[Code]) extends CodeBreaker {
-
+class CodeBreakerImpl(length: Int, codeRange: Set[Code]) extends CodeBreaker {
+  val codeLength: Int = length
   var response: Response = _
-  var lastGuess: Code = _
+  var lastGuess: Option[Code] = Option.empty
+  var isGuessing: Boolean = false
 
   var impossible: List[Code] = List()
   var possible: Set[Code] = codeRange
 
-  def guess: Code = {
-    var minimumEliminated: Int = -1
-    var bestGuess: Code = null
-    var unused: List[Code] = possible.toList
-    unused ++= impossible
-    for(a <- unused) {
-      val minMaxTable = Array.ofDim[Int](Code.getLength+1, Code.getLength+1)
-      for(b <- possible) {
-        val abResp: Response = a.getResponse(b)
-        minMaxTable(abResp.getBlack)(abResp.getWhite)+=1
-      }
-      var mostHits: Int = -1
-      for(row <- minMaxTable) {
-        for(i <- row) {
-          mostHits = Integer.max(i, mostHits)
+  def guess: Option[Code] = {
+    if(!isGuessing) {
+      var aaa = 0
+      isGuessing = true
+      var minimumEliminated: Int = -1
+      var bestGuess: Code = null
+      var unused: List[Code] = possible.toList
+      unused ++= impossible
+      for (a <- unused) {
+        println(aaa)
+        aaa = aaa + 1
+        val minMaxTable = Array.ofDim[Int](codeLength + 1, codeLength + 1)
+        for (b <- possible) {
+          val abResp: Response = a.getResponse(b)
+          minMaxTable(abResp.getBlack)(abResp.getWhite) += 1
+        }
+        var mostHits: Int = -1
+        for (row <- minMaxTable) {
+          for (i <- row) {
+            mostHits = Integer.max(i, mostHits)
+          }
+        }
+        val score: Int = possible.size - mostHits
+        if (score > minimumEliminated) {
+          minimumEliminated = score
+          bestGuess = a
         }
       }
-      val score: Int = possible.size - mostHits
-      if(score > minimumEliminated) {
-        minimumEliminated = score
-        bestGuess = a
-      }
+      lastGuess = Option(bestGuess)
+      isGuessing = false
+      Option(bestGuess)
+    } else {
+      Option.empty
     }
-    lastGuess = bestGuess
-    bestGuess
   }
 
   //TODO: Need to Test this function
@@ -183,7 +187,7 @@ class CodeBreakerImpl(codeRange: Set[Code]) extends CodeBreaker {
     val iterator: Iterator[Code] = possible.iterator
     while(iterator.hasNext) {
       val i: Code = iterator.next()
-      if(!lastGuess.getResponse(i).equals(response)) {
+      if(lastGuess.isDefined && !lastGuess.get.getResponse(i).equals(response)) {
         impossible ++= List(i)
         //iterator.remove
         possible -= i
@@ -193,34 +197,5 @@ class CodeBreakerImpl(codeRange: Set[Code]) extends CodeBreaker {
 }
 
 object CodeBreakerImplObj {
-  def apply(codeRange: Set[Code]): CodeBreakerImpl = new CodeBreakerImpl(codeRange)
+  def apply(length: Int, codeRange: Set[Code]): CodeBreakerImpl = new CodeBreakerImpl(length, codeRange)
 }
-
-sealed trait CodeMaker {
-  def setAnswer(): Unit
-  def setAnswer(code: Code): Unit
-  def getAnswer: Option[Code]
-  def verify(guess: Code): Option[Response]
-}
-
-class CodeMakerImpl extends CodeMaker {
-
-  var answer: Option[Code] = None
-
-  override def setAnswer(): Unit = this.answer = Some(Code())
-
-  override def setAnswer(code: Code): Unit = this.answer = Some(code)
-
-  override def getAnswer: Option[Code] = answer
-
-  override def verify(guess: Code): Option[Response] = answer match {
-    case Some(value) => Some(value.getResponse(guess))
-    case _ => None
-  }
-}
-
-object CodeMakerImplObj {
-  def apply(): CodeMakerImpl = new CodeMakerImpl()
-}
-
-
