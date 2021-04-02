@@ -8,7 +8,7 @@ import scala.concurrent.duration._
 import scala.swing.event.ButtonClicked
 
 object Timeout {
-  final val timeout = 10.seconds
+  final val timeout = 20.seconds
 }
 
 /**
@@ -114,20 +114,25 @@ abstract class Players extends Player[Msg,Code] {
 
 class UserPlayer extends Players {
   override var myCode: Code = Code()
-  override var codeBreaker: CodeBreakerImpl = CodeBreakerImplObj(myCode.getRange)
+  override var codeBreaker: CodeBreakerImpl = _
   override var myOpponents:Map[ActorRef[Msg],(Code,Boolean)] = Map.empty
   var referee: ActorRef[Msg] = _
+  var myLastGuess: Code = _
 
   override def guess(self:ActorContext[Msg]): Unit = {
     //TODO HANDLE GUI
     var guess: Map[String, Code] = Map.empty
+    var click: Int = 0
+    println(click)
     GUI.humanPanel.sendGuess.reactions += { case ButtonClicked(_) => guess = Map.empty
-      guess = GUI.humanPanel.getGuess
-      println(guess)
-      val target = myOpponents.filter(x => x._1.path.name == guess.head._1)
-      if(target != Map.empty) {
-        codeBreaker.lastGuess = guess.head._2
-        referee ! GuessMsg(self.self, target.head._1, guess.head._2)
+      if (click == 0) {
+        guess = GUI.humanPanel.getGuess
+        val target = myOpponents.filter(x => x._1.path.name == guess.head._1)
+        if (target != Map.empty) {
+          myLastGuess = guess.head._2
+          referee ! GuessMsg(self.self, target.head._1, guess.head._2)
+        }
+        click = click + 1
       }
     }
   }
@@ -139,6 +144,16 @@ class UserPlayer extends Players {
 
   override def handleResponse(ctx: ActorContext[Msg], response: Option[Response], sender: Option[ActorRef[Msg]]): Unit = {
     //TODO VISUALIZE WITH GUI
+    if(response.isDefined && response.get.isCorrect) {
+      myOpponents = myOpponents.map { el =>
+        if (el._1 == sender.get)
+          (el._1, (myLastGuess, true))
+        else el
+      }
+      if (myOpponents.values.map(_._2).reduce(_ & _)) {
+        referee ! AllGuessesMsg(ctx.self, myOpponents.map(x => x._1 -> x._2._1))
+      }
+    }
   }
 }
 
@@ -152,6 +167,7 @@ class AIPlayer extends Players {
   override var myOpponents:Map[ActorRef[Msg],(Code,Boolean)] = Map.empty
   var storedGuess: Option[Code] = Option.empty
   var referee: ActorRef[Msg] = _
+  println(myCode)
 
   override def guess(ctx: ActorContext[Msg]): Unit = {
     val target = myOpponents.find(x => !x._2._2)
@@ -161,9 +177,6 @@ class AIPlayer extends Players {
         storedGuess = Option.empty
       } else
         referee ! GuessMsg(ctx.self, target.get._1, codeBreaker.guess)
-    } else {
-      println(ctx.self + " got all answers!")
-      referee ! AllGuessesMsg(ctx.self, myOpponents map { case (actor, code -> _) => actor->code })
     }
   }
 
@@ -181,7 +194,7 @@ class AIPlayer extends Players {
             (el._1, (codeBreaker.lastGuess, true))
           else el
         }
-        if (!myOpponents.values.map(_._2).reduce(_ & _)) {
+        if (myOpponents.values.map(_._2).reduce(_ & _)) {
           referee ! AllGuessesMsg(ctx.self, myOpponents.map(x => x._1 -> x._2._1))
         } else {
           codeBreaker = CodeBreakerImplObj(myCode.getRange) //TODO check if such change is reflected into myOpponents

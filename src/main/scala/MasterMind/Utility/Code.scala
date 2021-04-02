@@ -72,7 +72,7 @@ class Code(length: Int) {
     }
     for(i <- a.indices) {
       for(j <- b.indices) {
-        if(a(i).equals(b(i))) {
+        if(a(i).equals(b(j))) {
           white+=1
           b(j) = -2
           null
