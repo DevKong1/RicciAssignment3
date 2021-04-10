@@ -87,8 +87,7 @@ abstract class Players extends Player[Msg,Code] {
     case (ctx, GuessResponseMsg(sender, player , code , response)) =>
       //SharedResponses MUST be on so process response from other player
       handleResponse(ctx, Option(response), Option(sender), Option(player), Option(code))
-      referee ! ReceivedResponseMsg(ctx.self)
-      waitTurn()
+      Behaviors.same
     case (ctx, _: VictoryDenyMsg) => println(ctx.self + " failed to win, stopping..."); idle();
     case (ctx, _: StopGameMsg) => println(ctx.self + " Stopping..."); Behaviors.stopped;
     case _ => Behaviors.same
@@ -307,7 +306,7 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
         if (currentPlayer.isDefined && currentPlayer.get == msg.getSender) {
           nextPlayerTurn(timers)
         } else {
-          println("Player confirmed response after Timeout")
+          println(msg.getSender + " confirmed response after Timeout")
         }
         Behaviors.same
       case (_, msg: TurnEnd) =>
