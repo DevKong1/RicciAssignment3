@@ -338,8 +338,14 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
       case (_,WinCheckResponseMsg(_, _, _, response)) =>
         if(response.isCorrect) {
           if(responses - 1 == 0) {
+            println(ctx.self + " Stopping...")
+            if(players.isDefined) {
+              for (player <- players.get) {
+                player ! StopGameMsg()
+              }
+            }
             controller ! VictoryConfirmMsg(winner)
-            idle()
+            Behaviors.stopped
           } else {
             responses = responses-1
             Behaviors.same
@@ -448,8 +454,8 @@ class GameController {
       }
     case (ctx, msg: VictoryConfirmMsg) =>
       logChat(msg)
-      ctx.self ! StopGameMsg()
-      Behaviors.same
+      GUI.logChat("The game has been stopped")
+      Behaviors.stopped
     case (_, msg: Msg) =>
       logChat(msg)
       Behaviors.same
