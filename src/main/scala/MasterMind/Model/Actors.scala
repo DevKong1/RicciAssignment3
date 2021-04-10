@@ -84,6 +84,11 @@ abstract class Players extends Player[Msg,Code] {
       println(ctx.self + " just received a win check msg, sending response!")
       referee ! WinCheckResponseMsg(ctx.self, sender, code, myCode.getResponse(code))
       Behaviors.same
+    case (ctx, GuessResponseMsg(sender, _ , _ , response)) =>
+      //SharedResponses MUST be on so process response from other player
+      handleResponse(ctx, Option(response), Option(sender))
+      referee ! ReceivedResponseMsg(ctx.self)
+      waitTurn()
     case (ctx, _: VictoryDenyMsg) => println(ctx.self + " failed to win, stopping..."); idle();
     case (ctx, _: StopGameMsg) => println(ctx.self + " Stopping..."); Behaviors.stopped;
     case _ => Behaviors.same
@@ -234,6 +239,7 @@ sealed trait Referee[T,K]{
 abstract class AbstractReferee extends Referee[Msg,Code] {
   val controller: ActorRef[Msg]
   var codeLength: Option[Int]
+  var sharedResponse: Boolean
   var currentPlayer: Option[ActorRef[Msg]]
   var players: Option[List[ActorRef[Msg]]]
 
@@ -249,16 +255,16 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
   /** Excludes a player */
   def playerOut(player: ActorRef[Msg]):Unit
 
-  def setupGame(length:Int, players:List[ActorRef[Msg]]):Unit
+  def setupGame(length:Int, players:List[ActorRef[Msg]], sharedResponse: Boolean):Unit
   /**
    *
    */
   override def idle() : Behavior[Msg] = {
     println("Referee has been spawned!")
     Behaviors.receive{
-      case (_,StartGameMsg(codeLength, _, newPlayers,_)) =>
+      case (_,StartGameMsg(codeLength, sharedResponse, newPlayers,_)) =>
         println("Ref just received startGameMsg")
-        setupGame(codeLength, newPlayers)
+        setupGame(codeLength, newPlayers, sharedResponse)
         refereeTurn()
       case (ctx, msg: StopGameMsg) =>
         println(ctx.self + " Stopping...")
@@ -300,7 +306,13 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
         Behaviors.same
       case (_, msg: GuessResponseMsg) =>
         controller ! msg
-        msg.getPlayer ! msg
+        if(!sharedResponse)
+          msg.getPlayer ! msg
+        else {
+          for(player <- players.get) {
+            player ! msg
+          }
+        }
         Behaviors.same
       case (ctx, msg: StopGameMsg) =>
         println(ctx.self + " Stopping...")
@@ -329,6 +341,7 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
     if(players.isEmpty) {
       idle()
     }
+
     var responses = players.get.size - 1
     for(player <- guesses) {
       player._1 ! WinCheckMsg(ctx.self,player._1,player._2)
@@ -369,12 +382,13 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
 }
 
 class RefereeImpl(private val controllerRef: ActorRef[Msg]) extends AbstractReferee {
-   override var codeLength: Option[Int] = Option.empty
-   override val controller: ActorRef[Msg] = controllerRef
-   override var currentPlayer: Option[ActorRef[Msg]] = Option.empty
-   override var players: Option[List[ActorRef[Msg]]] = Option.empty
+  override var codeLength: Option[Int] = Option.empty
+  override val controller: ActorRef[Msg] = controllerRef
+  override var currentPlayer: Option[ActorRef[Msg]] = Option.empty
+  override var players: Option[List[ActorRef[Msg]]] = Option.empty
+  override var sharedResponse: Boolean = false
 
-   var turnManager: TurnManager = TurnManager()
+  var turnManager: TurnManager = TurnManager()
 
   def getAllPlayers: Option[List[ActorRef[Msg]]] = if(players.isDefined) Option(players.get) else Option.empty
   def getEnemies(player: ActorRef[Msg]): Option[List[ActorRef[Msg]]] = if(players.isDefined) Option(players.get.filter(_ != player)) else Option.empty
@@ -393,9 +407,10 @@ class RefereeImpl(private val controllerRef: ActorRef[Msg]) extends AbstractRefe
     }
   }
 
-  override def setupGame(length: Int, newPlayers: List[ActorRef[Msg]]): Unit = {
+  override def setupGame(length: Int, newPlayers: List[ActorRef[Msg]], shared: Boolean): Unit = {
     codeLength = Option(length)
-    players = Option(newPlayers) //TODO FOR EACH PLAYER GET CODE
+    sharedResponse = shared
+    players = Option(newPlayers)
     turnManager.setPlayers(newPlayers)
   }
 
@@ -452,7 +467,7 @@ class GameController {
         GUI.logChat("Critical error: Referee Not initialized")
         Behaviors.same
       }
-    case (ctx, msg: VictoryConfirmMsg) =>
+    case (_, msg: VictoryConfirmMsg) =>
       logChat(msg)
       GUI.logChat("The game has been stopped")
       Behaviors.stopped
