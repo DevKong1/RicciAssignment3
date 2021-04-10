@@ -147,15 +147,12 @@ class CodeBreakerImpl(length: Int, codeRange: Set[Code]) extends CodeBreaker {
 
   def guess: Option[Code] = {
     if(!isGuessing) {
-      var aaa = 0
       isGuessing = true
       var minimumEliminated: Int = -1
       var bestGuess: Code = null
       var unused: List[Code] = possible.toList
       unused ++= impossible
       for (a <- unused) {
-        println(aaa)
-        aaa = aaa + 1
         val minMaxTable = Array.ofDim[Int](codeLength + 1, codeLength + 1)
         for (b <- possible) {
           val abResp: Response = a.getResponse(b)
