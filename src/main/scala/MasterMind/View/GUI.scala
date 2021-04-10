@@ -40,31 +40,29 @@ object GUI extends MainFrame {
 class startingGameDialog extends Dialog {
   val numPlayers: TextField = new TextField(10)
   val textCodeLength: TextField = new TextField(10)
-  val humanCheck: CheckBox = new CheckBox("Do you want a human player? ") /*{
-    reactions += {
-      case ButtonClicked(_) => if(humanCheck.selected) humanSelectNumberPanel.visible = true else humanSelectNumberPanel.visible = false
-    }
-  }*/
+  val humanCheck: CheckBox = new CheckBox("Do you want a human player? ")
+  val shareGuessCheck: CheckBox = new CheckBox("Do you want to share all guesses?")
+
   val startButton: Button = new Button("START") {
     reactions += {
       case ButtonClicked(_) =>
-      if (GUI.isNumber(numPlayers.text)) {
-        if (GUI.isNumber(textCodeLength.text)) {
-          GUI.codeLength = textCodeLength.text.toInt
-          close()
-          var isPresent: Boolean = false
-          if (humanCheck.selected) {
-            isPresent = true
+        if (GUI.isNumber(numPlayers.text)) {
+          if (GUI.isNumber(textCodeLength.text)) {
+            GUI.codeLength = textCodeLength.text.toInt
+            close()
+            var isPresent: Boolean = false
+            var sharedResponses: Boolean = false
+            if (humanCheck.selected) isPresent = true
+            if (shareGuessCheck.selected) sharedResponses = true
+            GUI.gameBoard = Game(isPresent, numPlayers.text.toInt)
+            GUI.gameSystem ! InitializeControllerMsg(numPlayers.text.toInt, GUI.codeLength, isPresent, sharedResponses)
+            GUI.gameBoard.open()
+          } else {
+            Dialog.showMessage(contents.head, "Select a valid code's length", "ERROR!", Dialog.Message.Info, null)
           }
-          GUI.gameBoard = Game(isPresent, numPlayers.text.toInt)
-          GUI.gameSystem ! InitializeControllerMsg(numPlayers.text.toInt, GUI.codeLength, isPresent, sharedResponses = false)
-          GUI.gameBoard.open()
         } else {
-          Dialog.showMessage(contents.head, "Select a valid code's length", "ERROR!", Dialog.Message.Info, null)
+          Dialog.showMessage(contents.head, "Select a valid number of player", "ERROR!", Dialog.Message.Info, null)
         }
-      } else {
-        Dialog.showMessage(contents.head, "Select a valid number of player", "ERROR!", Dialog.Message.Info, null)
-      }
     }
   }
 
@@ -76,19 +74,13 @@ class startingGameDialog extends Dialog {
     contents ++= Seq(new Label("Select content's length: "), textCodeLength)
   }
 
-  val humanPanel: BoxPanel = new BoxPanel(Orientation.Horizontal) {
-    contents ++= Seq(humanCheck)
+  val checkPanel: BoxPanel = new BoxPanel(Orientation.Horizontal) {
+    contents ++= Seq(humanCheck, shareGuessCheck)
   }
-
-  /*val humanSelectNumberPanel: BoxPanel = new BoxPanel(Orientation.Horizontal) {
-    contents += new Label("Select your code: ")
-    contents += new TextField(10)
-    visible = false
-  }*/
 
   contents = new BoxPanel(Orientation.Vertical) {
     contents += new FlowPanel() {
-      contents ++= Seq(playerPanel, numberPanel, humanCheck, startButton) //humanSelectNumberPanel, startButton)
+      contents ++= Seq(playerPanel, numberPanel, checkPanel, startButton)
     }
   }
 

@@ -102,8 +102,12 @@ abstract class Players extends Player[Msg,Code] {
   def myTurn(): Behavior[Msg] = Behaviors.receive {
     case (ctx, GuessResponseMsg(sender, player , code , response)) =>
       handleResponse(ctx, Option(response), Option(sender), Option(player), Option(code))
-      referee ! ReceivedResponseMsg(ctx.self)
-      waitTurn()
+      if(ctx.self == player) {
+        referee ! ReceivedResponseMsg(ctx.self)
+        waitTurn()
+      } else {
+        Behaviors.same
+      }
     case(ctx, _: TurnEnd) =>
       handleResponse(ctx, Option.empty, Option.empty, Option.empty, Option.empty)
       waitTurn()
@@ -154,17 +158,20 @@ class UserPlayer extends Players {
 
   override def handleResponse(ctx: ActorContext[Msg], response: Option[Response], sender: Option[ActorRef[Msg]], player: Option[ActorRef[Msg]], guess: Option[Code]): Unit = {
     //TODO VISUALIZE WITH GUI
-    if(response.isDefined && response.get.isCorrect) {
-      myOpponents = myOpponents.map { el =>
-        if (el._1 == sender.get)
-          (el._1, (myLastGuess, true))
-        else el
-      }
-      if (myOpponents.values.map(_._2).reduce(_ & _)) {
-        referee ! AllGuessesMsg(ctx.self, myOpponents.map(x => x._1 -> x._2._1))
+    if (ctx.self == player.get) {
+      if (response.isDefined && response.get.isCorrect) {
+        myOpponents = myOpponents.map { el =>
+          if (el._1 == sender.get)
+            (el._1, (myLastGuess, true))
+          else el
+        }
+        if (myOpponents.values.map(_._2).reduce(_ & _)) {
+          referee ! AllGuessesMsg(ctx.self, myOpponents.map(x => x._1 -> x._2._1))
+        }
       }
     }
   }
+
 }
 
 object UserPlayer {
@@ -185,7 +192,7 @@ class AIPlayer extends Players {
         referee ! GuessMsg(ctx.self, target.get._1, storedGuess.get)
         storedGuess = Option.empty
       } else {
-        val guess = sharedGuess.find(x => x._1.eq(target.get._1)).get._2.guess
+        val guess = sharedGuess.find(x => x._1.equals(target.get._1)).get._2.guess
         if(guess.isDefined)
           referee ! GuessMsg(ctx.self, target.get._1, guess.get)
       }
@@ -216,19 +223,12 @@ class AIPlayer extends Players {
       } else if (sharedGuess.find(x => x._1.equals(sender.get)).get._2.lastGuess.isDefined) {
         storedGuess = sharedGuess.find(x => x._1.equals(sender.get)).get._2.lastGuess
       }
-    } else {
-      if (response.isDefined) {
-        sharedGuess.find(x => x._1.equals(sender.get)).get._2.receiveKey(response.get)
-        if (response.get.isCorrect) {
-          myOpponents = myOpponents.map { el =>
-            if (el._1 == sender.get)
-              (el._1, (sharedGuess.find(x => x._1.equals(sender.get)).get._2.lastGuess.get, true))
-            else el
-          }
-        }
-      }
+    } else if (ctx.self != sender.get && response.isDefined) {
+      sharedGuess.find(x => x._1.equals(sender.get)).get._2.lastGuess = guess
+      sharedGuess.find(x => x._1.equals(sender.get)).get._2.receiveKey(response.get)
     }
   }
+
 }
 
 object AIPlayer {
