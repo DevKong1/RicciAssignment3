@@ -2,10 +2,12 @@ package MasterMind.Model
 import MasterMind.Utility._
 import MasterMind.View.GUI
 import akka.actor.typed.scaladsl.{ActorContext, Behaviors, TimerScheduler}
-import akka.actor.typed.{ActorRef, Behavior}
+import akka.actor.typed.{ActorRef, Behavior, DispatcherSelector}
 
+import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.concurrent.duration._
 import scala.swing.event.ButtonClicked
+import scala.util.Success
 
 object Timeout {
   final val timeout = 20.seconds
@@ -62,7 +64,6 @@ abstract class Players extends Player[Msg,Code] {
       case (ctx, _: StopGameMsg) => println(ctx.self + " Stopping..."); Behaviors.stopped;
       case _ => Behaviors.same
     }
-
   }
 
   /**
@@ -93,6 +94,7 @@ abstract class Players extends Player[Msg,Code] {
    * State representing player's turn and actions
    *
    * @return
+   *
    */
   def myTurn(): Behavior[Msg] = Behaviors.receive {
     case (ctx, GuessResponseMsg(sender, _ , _ , response)) =>
@@ -101,6 +103,7 @@ abstract class Players extends Player[Msg,Code] {
       waitTurn()
     case(ctx, _: TurnEnd) =>
       handleResponse(ctx, Option.empty, Option.empty)
+      println(ctx.self+" received turn end")
       waitTurn()
     case (ctx, GuessMsg(sender, _, code)) =>
       println(ctx.self + " just received a guess msg, sending response!")
@@ -172,20 +175,31 @@ class AIPlayer extends Players {
   var codeBreaker: CodeBreakerImpl = _
   var storedGuess: Option[Code] = Option.empty
   var referee: ActorRef[Msg] = _
+  var guessing:Boolean = false
 
   override def guess(ctx: ActorContext[Msg]): Unit = {
+    implicit val executionContext: ExecutionContext =
+      ctx.system.dispatchers.lookup(DispatcherSelector.fromConfig("my-blocking-dispatcher"))
     val target = myOpponents.find(x => !x._2._2)
     if (target.isDefined) {
       if(storedGuess.isDefined) {
         referee ! GuessMsg(ctx.self, target.get._1, storedGuess.get)
         storedGuess = Option.empty
       } else {
-        val guess = codeBreaker.guess
-        if(guess.isDefined)
-          referee ! GuessMsg(ctx.self, target.get._1, guess.get)
+          if(!guessing) {
+            codeBreaker.guess.onComplete {
+              case Success(_) => {
+                storedGuess = codeBreaker.getGuess
+                referee ! GuessMsg(ctx.self, target.get._1, storedGuess.get)
+                guessing = false
+              }
+              case _ => println("Something went wrong while computing a guess")
+            }
+            guessing = true
+          }
+        }
       }
     }
-  }
 
   override def setupCode(length:Int, opponents: List[ActorRef[Msg]], ref: ActorRef[Msg]): Unit = {
     myCode = Code(length)
@@ -295,7 +309,7 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
         Behaviors.same
       case (_, msg: TurnEnd) =>
         controller ! msg
-        msg.getPlayer ! msg
+        msg.getPlayer ! msg //TODO WHAT?
         nextPlayerTurn(timers)
         Behaviors.same
       case (_, msg: GuessResponseMsg) =>
@@ -310,7 +324,7 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
           }
         }
         Behaviors.stopped
-      case (_, msg: Msg) =>
+      case (_, msg: Msg) => //TODO WHAT? RIDONDANTE; OTTIMA SOLUZIONE MA TOGLI DALLE ALTRE PARTI
         controller ! msg
         Behaviors.same
       case _ => Behaviors.same

@@ -5,8 +5,8 @@ import akka.actor.typed.ActorRef
 import scala.util.Random
 
 
-class TurnManager(var players: Seq[ActorRef[Msg]],val index1:Int) {
-  private var index = index1
+class TurnManager(var players: Seq[ActorRef[Msg]],var index:Int) {
+
 
   def nextPlayer: ActorRef[Msg] = if (index == players.size-1) {
     println("Completed a whole turn!")

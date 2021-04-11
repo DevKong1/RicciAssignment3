@@ -1,5 +1,8 @@
 package MasterMind.Utility
 
+import akka.actor.typed.DispatcherSelector
+
+import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.util.Random
 
 // Mastermind Code representation
@@ -144,9 +147,9 @@ class CodeBreakerImpl(length: Int, codeRange: Set[Code]) extends CodeBreaker {
 
   var impossible: List[Code] = List()
   var possible: Set[Code] = codeRange
-
-  def guess: Option[Code] = {
-    if(!isGuessing) {
+  def getGuess: Option[Code] = lastGuess
+  def guess(implicit ec: ExecutionContext): Future[Unit] = Future{
+      var aaa = 0
       isGuessing = true
       var minimumEliminated: Int = -1
       var bestGuess: Code = null
@@ -171,11 +174,6 @@ class CodeBreakerImpl(length: Int, codeRange: Set[Code]) extends CodeBreaker {
         }
       }
       lastGuess = Option(bestGuess)
-      isGuessing = false
-      Option(bestGuess)
-    } else {
-      Option.empty
-    }
   }
 
   //TODO: Need to Test this function
