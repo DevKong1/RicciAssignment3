@@ -46,23 +46,23 @@ class startingGameDialog extends Dialog {
   val startButton: Button = new Button("START") {
     reactions += {
       case ButtonClicked(_) =>
-      if (GUI.isNumber(numPlayers.text)) {
-        if (GUI.isNumber(textCodeLength.text)) {
-          GUI.codeLength = textCodeLength.text.toInt
-          close()
-          var isPresent: Boolean = false
-          var sharedResponses: Boolean = false
-          if (humanCheck.selected) isPresent = true
-          if (shareGuessCheck.selected) sharedResponses = true
-          GUI.gameBoard = Game(isPresent, numPlayers.text.toInt)
-          GUI.gameSystem ! InitializeControllerMsg(numPlayers.text.toInt, GUI.codeLength, isPresent, sharedResponses)
-          GUI.gameBoard.open()
+        if (GUI.isNumber(numPlayers.text)) {
+          if (GUI.isNumber(textCodeLength.text)) {
+            GUI.codeLength = textCodeLength.text.toInt
+            close()
+            var isPresent: Boolean = false
+            var sharedResponses: Boolean = false
+            if (humanCheck.selected) isPresent = true
+            if (shareGuessCheck.selected) sharedResponses = true
+            GUI.gameBoard = Game(isPresent, numPlayers.text.toInt)
+            GUI.gameSystem ! InitializeControllerMsg(numPlayers.text.toInt, GUI.codeLength, isPresent, sharedResponses)
+            GUI.gameBoard.open()
+          } else {
+            Dialog.showMessage(contents.head, "Select a valid code's length", "ERROR!", Dialog.Message.Info, null)
+          }
         } else {
-          Dialog.showMessage(contents.head, "Select a valid code's length", "ERROR!", Dialog.Message.Info, null)
+          Dialog.showMessage(contents.head, "Select a valid number of player", "ERROR!", Dialog.Message.Info, null)
         }
-      } else {
-        Dialog.showMessage(contents.head, "Select a valid number of player", "ERROR!", Dialog.Message.Info, null)
-      }
     }
   }
 

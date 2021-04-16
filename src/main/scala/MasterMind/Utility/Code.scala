@@ -4,13 +4,14 @@ import akka.actor.typed.DispatcherSelector
 
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.util.Random
+import util.control.Breaks
 
 // Mastermind Code representation
 
 class Code(length: Int) {
   private val codeRadix: Int = 10
   private val codeLength: Int = length
-  private var pegs: Array[Int] = Array.emptyIntArray
+  private var pegs: Array[Int] = Array()
   private var codePoint: Int = 0
 
   def codeRange: Int = Math.pow(codeRadix, codeLength).toInt
@@ -19,7 +20,7 @@ class Code(length: Int) {
   def getLength: Int = codeLength
 
   def getRange: Set[Code] = {
-    var allCodes: Set[Code] = Set()
+    var allCodes: Set[Code] = Set.empty
     for(i <- 0 until codeRange) {
       allCodes += Code(getLength, i)
     }
@@ -44,18 +45,18 @@ class Code(length: Int) {
     for(i <- pegs.indices) {
       pegs(i) match {
         case 0 =>
-        case _ => q = q+(pegs(i) * Math.pow(10,i)).toInt
+        case _ => q = q+(pegs(i) * Math.pow(10,i).toInt)
       }
     }
     q
   }
 
   def toPegs(codePoint: Int): Array[Int] = {
-    val output: Array[Int] = new Array[Int](codeLength)
+    val output: Array[Int] = Array.ofDim(codeLength)
     var cP: Int = codePoint
     for(i <- 0 until codeLength) {
       output(i) = cP % codeRadix
-      cP /= codeRadix
+      cP = cP / codeRadix
     }
     output
   }
@@ -63,21 +64,24 @@ class Code(length: Int) {
   def getResponse(other: Code): Response = {
     val a: Array[Int] = Array.copyOf(pegs, pegs.length)
     val b: Array[Int] = Array.copyOf(other.pegs, other.pegs.length)
+    val breaks = Breaks
     var black: Int = 0
     var white: Int = 0
     for(i <- a.indices) {
-      if(a(i).equals(b(i))) {
-        black+=1
+      if(a(i) == b(i)) {
+        black = black + 1
         a(i) = -1
         b(i) = -2
       }
     }
     for(i <- a.indices) {
-      for(j <- b.indices) {
-        if(a(i).equals(b(j))) {
-          white+=1
-          b(j) = -2
-          null
+      breaks.breakable {
+        for(j <- b.indices) {
+          if (a(i) == b(j)) {
+            white = white + 1
+            b(j) = -2
+            breaks.break
+          }
         }
       }
     }
@@ -141,7 +145,6 @@ sealed trait CodeBreaker {
 
 class CodeBreakerImpl(length: Int, codeRange: Set[Code]) extends CodeBreaker {
   val codeLength: Int = length
-  var response: Response = _
   var lastGuess: Option[Code] = Option.empty
   var isGuessing: Boolean = false
 
@@ -178,16 +181,19 @@ class CodeBreakerImpl(length: Int, codeRange: Set[Code]) extends CodeBreaker {
 
   //TODO: Need to Test this function
   override def receiveKey(response: Response): Unit = {
-    this.response = response
-    val iterator: Iterator[Code] = possible.iterator
-    while(iterator.hasNext) {
-      val i: Code = iterator.next()
-      if(lastGuess.isDefined && !lastGuess.get.getResponse(i).equals(response)) {
-        impossible ++= List(i)
+    println(response)
+    println(possible)
+    //lazy val iterator: Iterator[Code] = possible.iterator
+    for(i <- possible) {
+    //while (iterator.hasNext) {
+      //val i: Code = iterator.next()
+      if (lastGuess.isDefined && lastGuess.get.getResponse(i) != response) {
+        impossible = i :: impossible
         //iterator.remove
         possible -= i
       }
     }
+    println(possible)
   }
 }
 

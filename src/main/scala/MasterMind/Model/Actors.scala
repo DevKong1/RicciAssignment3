@@ -33,7 +33,7 @@ abstract class Players extends Player[Msg,Code] {
   def guess(self: ActorContext[Msg]): Unit
 
   def setupCode(length:Int, opponents: List[ActorRef[Msg]], referee: ActorRef[Msg]): Unit
-  def handleResponse(ctx: ActorContext[Msg], response: Option[Response], sender: Option[ActorRef[Msg]]): Unit
+  def handleResponse(ctx: ActorContext[Msg], response: Option[Response], sender: Option[ActorRef[Msg]], player: Option[ActorRef[Msg]], guess: Option[Code]): Unit
 
   var referee: ActorRef[Msg]
   var myOpponents: Map[ActorRef[Msg], (Code, Boolean)]
@@ -85,6 +85,10 @@ abstract class Players extends Player[Msg,Code] {
       println(ctx.self + " just received a win check msg, sending response!")
       referee ! WinCheckResponseMsg(ctx.self, sender, code, myCode.getResponse(code))
       Behaviors.same
+    case (ctx, GuessResponseMsg(sender, player , code , response)) =>
+      //SharedResponses MUST be on so process response from other player
+      handleResponse(ctx, Option(response), Option(sender), Option(player), Option(code))
+      Behaviors.same
     case (ctx, _: VictoryDenyMsg) => println(ctx.self + " failed to win, stopping..."); idle();
     case (ctx, _: StopGameMsg) => println(ctx.self + " Stopping..."); Behaviors.stopped;
     case _ => Behaviors.same
@@ -97,13 +101,17 @@ abstract class Players extends Player[Msg,Code] {
    *
    */
   def myTurn(): Behavior[Msg] = Behaviors.receive {
-    case (ctx, GuessResponseMsg(sender, _ , _ , response)) =>
-      handleResponse(ctx, Option(response), Option(sender))
-      referee ! ReceivedResponseMsg(ctx.self)
-      waitTurn()
+    case (ctx, GuessResponseMsg(sender, player , code , response)) =>
+      handleResponse(ctx, Option(response), Option(sender), Option(player), Option(code))
+      if(ctx.self == player) {
+        referee ! ReceivedResponseMsg(ctx.self)
+        waitTurn()
+      } else {
+        Behaviors.same
+      }
     case(ctx, _: TurnEnd) =>
-      handleResponse(ctx, Option.empty, Option.empty)
       println(ctx.self+" received turn end")
+      handleResponse(ctx, Option.empty, Option.empty, Option.empty, Option.empty)
       waitTurn()
     case (ctx, GuessMsg(sender, _, code)) =>
       println(ctx.self + " just received a guess msg, sending response!")
@@ -134,7 +142,7 @@ class UserPlayer extends Players {
     GUI.humanPanel.sendGuess.reactions += { case ButtonClicked(_) => guess = Map.empty
       if (click == 0) {
         guess = GUI.humanPanel.getGuess
-        val target = myOpponents.filter(x => x._1.path.name == guess.head._1)
+        val target = myOpponents.filter(x => x._1.path.name.equals(guess.head._1))
         if (target != Map.empty) {
           myLastGuess = guess.head._2
           referee ! GuessMsg(self.self, target.head._1, guess.head._2)
@@ -150,19 +158,22 @@ class UserPlayer extends Players {
     referee = ref
   }
 
-  override def handleResponse(ctx: ActorContext[Msg], response: Option[Response], sender: Option[ActorRef[Msg]]): Unit = {
+  override def handleResponse(ctx: ActorContext[Msg], response: Option[Response], sender: Option[ActorRef[Msg]], player: Option[ActorRef[Msg]], guess: Option[Code]): Unit = {
     //TODO VISUALIZE WITH GUI
-    if(response.isDefined && response.get.isCorrect) {
-      myOpponents = myOpponents.map { el =>
-        if (el._1 == sender.get)
-          (el._1, (myLastGuess, true))
-        else el
-      }
-      if (myOpponents.values.map(_._2).reduce(_ & _)) {
-        referee ! AllGuessesMsg(ctx.self, myOpponents.map(x => x._1 -> x._2._1))
+    if (ctx.self == player.get) {
+      if (response.isDefined && response.get.isCorrect) {
+        myOpponents = myOpponents.map { el =>
+          if (el._1 == sender.get)
+            (el._1, (myLastGuess, true))
+          else el
+        }
+        if (myOpponents.values.map(_._2).reduce(_ & _)) {
+          referee ! AllGuessesMsg(ctx.self, myOpponents.map(x => x._1 -> x._2._1))
+        }
       }
     }
   }
+
 }
 
 object UserPlayer {
@@ -172,7 +183,7 @@ object UserPlayer {
 class AIPlayer extends Players {
   override var myCode: Code = _
   override var myOpponents:Map[ActorRef[Msg],(Code,Boolean)] = Map.empty
-  var codeBreaker: CodeBreakerImpl = _
+  var sharedGuess: Map[ActorRef[Msg], CodeBreakerImpl] = Map.empty
   var storedGuess: Option[Code] = Option.empty
   var referee: ActorRef[Msg] = _
   var guessing:Boolean = false
@@ -187,9 +198,9 @@ class AIPlayer extends Players {
         storedGuess = Option.empty
       } else {
           if(!guessing) {
-            codeBreaker.guess.onComplete {
+            sharedGuess.find(x => x._1.equals(target.get._1)).get._2.guess.onComplete {
               case Success(_) => {
-                storedGuess = codeBreaker.getGuess
+                storedGuess = sharedGuess.find(x => x._1.equals(target.get._1)).get._2.getGuess
                 referee ! GuessMsg(ctx.self, target.get._1, storedGuess.get)
                 guessing = false
               }
@@ -203,30 +214,34 @@ class AIPlayer extends Players {
 
   override def setupCode(length:Int, opponents: List[ActorRef[Msg]], ref: ActorRef[Msg]): Unit = {
     myCode = Code(length)
-    codeBreaker = CodeBreakerImplObj(length, myCode.getRange)
+    sharedGuess = opponents.map(x => x->CodeBreakerImplObj(length, myCode.getRange)).toMap
     myOpponents = opponents.map(x => x->(Code(length),false)).toMap
     referee = ref
   }
 
-  override def handleResponse(ctx: ActorContext[Msg], response: Option[Response], sender: Option[ActorRef[Msg]]): Unit = {
-    if(response.isDefined) {
-      codeBreaker.receiveKey(response.get)
-      if (response.get.isCorrect) {
-        myOpponents = myOpponents.map { el =>
-          if (el._1 == sender.get)
-            (el._1, (codeBreaker.lastGuess.get, true))
-          else el
+  override def handleResponse(ctx: ActorContext[Msg], response: Option[Response], sender: Option[ActorRef[Msg]], player: Option[ActorRef[Msg]], guess: Option[Code]): Unit = {
+    if (ctx.self == player.get) {
+      if (response.isDefined) {
+        sharedGuess.find(x => x._1.equals(sender.get)).get._2.receiveKey(response.get)
+        if (response.get.isCorrect) {
+          myOpponents = myOpponents.map { el =>
+            if (el._1 == sender.get)
+              (el._1, (sharedGuess.find(x => x._1.equals(sender.get)).get._2.lastGuess.get, true))
+            else el
+          }
+          if (myOpponents.values.map(_._2).reduce(_ & _)) {
+            referee ! AllGuessesMsg(ctx.self, myOpponents.map(x => x._1 -> x._2._1))
+          }
         }
-        if (myOpponents.values.map(_._2).reduce(_ & _)) {
-          referee ! AllGuessesMsg(ctx.self, myOpponents.map(x => x._1 -> x._2._1))
-        } else {
-          codeBreaker = CodeBreakerImplObj(myCode.getLength, myCode.getRange) //TODO check if such change is reflected into myOpponents
-        }
+      } else if (sharedGuess.find(x => x._1.equals(sender.get)).get._2.lastGuess.isDefined) {
+        storedGuess = sharedGuess.find(x => x._1.equals(sender.get)).get._2.lastGuess
       }
-    } else if(codeBreaker.lastGuess.isDefined) {
-      storedGuess = codeBreaker.lastGuess
+    } else if (ctx.self != sender.get && response.isDefined) {
+      sharedGuess.find(x => x._1.equals(sender.get)).get._2.lastGuess = guess
+      sharedGuess.find(x => x._1.equals(sender.get)).get._2.receiveKey(response.get)
     }
   }
+
 }
 
 object AIPlayer {
@@ -248,6 +263,7 @@ sealed trait Referee[T,K]{
 abstract class AbstractReferee extends Referee[Msg,Code] {
   val controller: ActorRef[Msg]
   var codeLength: Option[Int]
+  var sharedResponse: Boolean
   var currentPlayer: Option[ActorRef[Msg]]
   var players: Option[List[ActorRef[Msg]]]
 
@@ -263,16 +279,16 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
   /** Excludes a player */
   def playerOut(player: ActorRef[Msg]):Unit
 
-  def setupGame(length:Int, players:List[ActorRef[Msg]]):Unit
+  def setupGame(length:Int, players:List[ActorRef[Msg]], sharedResponse: Boolean):Unit
   /**
    *
    */
   override def idle() : Behavior[Msg] = {
     println("Referee has been spawned!")
     Behaviors.receive{
-      case (_,StartGameMsg(codeLength, _, newPlayers,_)) =>
+      case (_,StartGameMsg(codeLength, sharedResponse, newPlayers,_)) =>
         println("Ref just received startGameMsg")
-        setupGame(codeLength, newPlayers)
+        setupGame(codeLength, newPlayers, sharedResponse)
         refereeTurn()
       case (ctx, msg: StopGameMsg) =>
         println(ctx.self + " Stopping...")
@@ -304,7 +320,7 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
         if (currentPlayer.isDefined && currentPlayer.get == msg.getSender) {
           nextPlayerTurn(timers)
         } else {
-          println("Player confirmed response after Timeout")
+          println(msg.getSender + " confirmed response after Timeout")
         }
         Behaviors.same
       case (_, msg: TurnEnd) =>
@@ -314,7 +330,13 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
         Behaviors.same
       case (_, msg: GuessResponseMsg) =>
         controller ! msg
-        msg.getPlayer ! msg
+        if(!sharedResponse)
+          msg.getPlayer ! msg
+        else {
+          for(player <- players.get) {
+            player ! msg
+          }
+        }
         Behaviors.same
       case (ctx, msg: StopGameMsg) =>
         println(ctx.self + " Stopping...")
@@ -343,6 +365,7 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
     if(players.isEmpty) {
       idle()
     }
+
     var responses = players.get.size - 1
     for(player <- guesses) {
       player._1 ! WinCheckMsg(ctx.self,player._1,player._2)
@@ -383,12 +406,13 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
 }
 
 class RefereeImpl(private val controllerRef: ActorRef[Msg]) extends AbstractReferee {
-   override var codeLength: Option[Int] = Option.empty
-   override val controller: ActorRef[Msg] = controllerRef
-   override var currentPlayer: Option[ActorRef[Msg]] = Option.empty
-   override var players: Option[List[ActorRef[Msg]]] = Option.empty
+  override var codeLength: Option[Int] = Option.empty
+  override val controller: ActorRef[Msg] = controllerRef
+  override var currentPlayer: Option[ActorRef[Msg]] = Option.empty
+  override var players: Option[List[ActorRef[Msg]]] = Option.empty
+  override var sharedResponse: Boolean = false
 
-   var turnManager: TurnManager = TurnManager()
+  var turnManager: TurnManager = TurnManager()
 
   def getAllPlayers: Option[List[ActorRef[Msg]]] = if(players.isDefined) Option(players.get) else Option.empty
   def getEnemies(player: ActorRef[Msg]): Option[List[ActorRef[Msg]]] = if(players.isDefined) Option(players.get.filter(_ != player)) else Option.empty
@@ -407,9 +431,10 @@ class RefereeImpl(private val controllerRef: ActorRef[Msg]) extends AbstractRefe
     }
   }
 
-  override def setupGame(length: Int, newPlayers: List[ActorRef[Msg]]): Unit = {
+  override def setupGame(length: Int, newPlayers: List[ActorRef[Msg]], shared: Boolean): Unit = {
     codeLength = Option(length)
-    players = Option(newPlayers) //TODO FOR EACH PLAYER GET CODE
+    sharedResponse = shared
+    players = Option(newPlayers)
     turnManager.setPlayers(newPlayers)
   }
 
@@ -466,7 +491,7 @@ class GameController {
         GUI.logChat("Critical error: Referee Not initialized")
         Behaviors.same
       }
-    case (ctx, msg: VictoryConfirmMsg) =>
+    case (_, msg: VictoryConfirmMsg) =>
       logChat(msg)
       GUI.logChat("The game has been stopped")
       Behaviors.stopped
