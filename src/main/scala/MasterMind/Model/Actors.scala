@@ -88,6 +88,7 @@ abstract class Players extends Player[Msg,Code] {
     case (ctx, GuessResponseMsg(sender, player , code , response)) =>
       //SharedResponses MUST be on so process response from other player
       handleResponse(ctx, Option(response), Option(sender), Option(player), Option(code))
+      referee ! ReceivedResponseMsg(ctx.self)
       Behaviors.same
     case (ctx, _: VictoryDenyMsg) => println(ctx.self + " failed to win, stopping..."); idle();
     case (ctx, _: StopGameMsg) => println(ctx.self + " Stopping..."); Behaviors.stopped;
@@ -241,7 +242,6 @@ class AIPlayer extends Players {
       sharedGuess.find(x => x._1.equals(sender.get)).get._2.receiveKey(response.get)
     }
   }
-
 }
 
 object AIPlayer {
@@ -266,6 +266,7 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
   var sharedResponse: Boolean
   var currentPlayer: Option[ActorRef[Msg]]
   var players: Option[List[ActorRef[Msg]]]
+  var receivedResponses: Int
 
   case class PimpedResponse(response: Response) {
     def isCorrect: Boolean = if(codeLength.isDefined) response.getBlack == codeLength.get else false
@@ -317,11 +318,17 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
         }
         Behaviors.same
       case (_, msg: ReceivedResponseMsg) =>
-        if (currentPlayer.isDefined && currentPlayer.get == msg.getSender) {
+        if(!sharedResponse) {
+            if (currentPlayer.isDefined && currentPlayer.get == msg.getSender) {
+              nextPlayerTurn(timers)
+            } else {
+              println(msg.getSender + " confirmed response after Timeout")
+            }
+        } else if(receivedResponses == players.get.length -1) {
+          receivedResponses = 0
           nextPlayerTurn(timers)
-        } else {
-          println(msg.getSender + " confirmed response after Timeout")
         }
+        else receivedResponses = receivedResponses + 1
         Behaviors.same
       case (_, msg: TurnEnd) =>
         controller ! msg
@@ -411,6 +418,7 @@ class RefereeImpl(private val controllerRef: ActorRef[Msg]) extends AbstractRefe
   override var currentPlayer: Option[ActorRef[Msg]] = Option.empty
   override var players: Option[List[ActorRef[Msg]]] = Option.empty
   override var sharedResponse: Boolean = false
+  override var receivedResponses: Int = 0
 
   var turnManager: TurnManager = TurnManager()
 
