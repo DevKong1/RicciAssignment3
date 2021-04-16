@@ -4,7 +4,7 @@ import MasterMind.View.GUI
 import akka.actor.typed.scaladsl.{ActorContext, Behaviors, TimerScheduler}
 import akka.actor.typed.{ActorRef, Behavior, DispatcherSelector}
 
-import scala.concurrent.{ExecutionContext, Future, Promise}
+import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 import scala.swing.event.ButtonClicked
 import scala.util.Success
@@ -78,7 +78,6 @@ abstract class Players extends Player[Msg,Code] {
       myTurn()
     // Received a guess from another player, send response to referee
     case (ctx, GuessMsg(sender, _, code)) =>
-      println(ctx.self + " just received a guess msg, sending response!")
       referee ! GuessResponseMsg(ctx.self, sender, code, myCode.getResponse(code))
       Behaviors.same
     case (ctx, WinCheckMsg(sender, _, code)) =>
@@ -174,7 +173,6 @@ class UserPlayer extends Players {
       }
     }
   }
-
 }
 
 object UserPlayer {
@@ -185,43 +183,52 @@ class AIPlayer extends Players {
   override var myCode: Code = _
   override var myOpponents:Map[ActorRef[Msg],(Code,Boolean)] = Map.empty
   var sharedGuess: Map[ActorRef[Msg], CodeBreakerImpl] = Map.empty
-  var storedGuess: Option[Code] = Option.empty
+  var storedGuess: Map[ActorRef[Msg], Option[Code]] = Map.empty
   var referee: ActorRef[Msg] = _
-  var guessing:Boolean = false
+  // Player is alreadu elaborating a response
+  var guessing: Boolean = false
+  // Player already calculated a guess but timed out
+  var timedOut: Boolean = false
 
   override def guess(ctx: ActorContext[Msg]): Unit = {
     implicit val executionContext: ExecutionContext =
       ctx.system.dispatchers.lookup(DispatcherSelector.fromConfig("my-blocking-dispatcher"))
     val target = myOpponents.find(x => !x._2._2)
     if (target.isDefined) {
-      if(storedGuess.isDefined) {
-        referee ! GuessMsg(ctx.self, target.get._1, storedGuess.get)
-        storedGuess = Option.empty
-      } else {
-          if(!guessing) {
-            sharedGuess.find(x => x._1.equals(target.get._1)).get._2.guess.onComplete {
-              case Success(_) => {
-                storedGuess = sharedGuess.find(x => x._1.equals(target.get._1)).get._2.getGuess
-                referee ! GuessMsg(ctx.self, target.get._1, storedGuess.get)
-                guessing = false
-              }
-              case _ => println("Something went wrong while computing a guess")
+      if(storedGuess(target.get._1).isDefined) {
+        referee ! GuessMsg(ctx.self, target.get._1, storedGuess(target.get._1).get)
+        storedGuess = storedGuess.map { case (player, stored) => if(player == target.get._1) player -> Option.empty else player -> stored }
+      } else if(!guessing) {
+        sharedGuess.find(x => x._1.equals(target.get._1)).get._2.guess.onComplete {
+          case Success(_) =>
+            val calculatedGuess = sharedGuess.find(x => x._1.equals(target.get._1)).get._2.getGuess
+            if(!timedOut)
+              referee ! GuessMsg(ctx.self, target.get._1, calculatedGuess.get)
+            else {
+              storedGuess = storedGuess.map { case (player, stored) => if(player == target.get._1) player -> calculatedGuess else player -> stored }
+              timedOut = false
             }
-            guessing = true
-          }
+            guessing = false
+          case _ => println("Something went wrong while computing a guess")
         }
+        guessing = true
       }
     }
+  }
 
   override def setupCode(length:Int, opponents: List[ActorRef[Msg]], ref: ActorRef[Msg]): Unit = {
     myCode = Code(length)
     sharedGuess = opponents.map(x => x->CodeBreakerImplObj(length, myCode.getRange)).toMap
+    storedGuess = opponents.map(x => x->Option.empty).toMap
     myOpponents = opponents.map(x => x->(Code(length),false)).toMap
     referee = ref
   }
 
   override def handleResponse(ctx: ActorContext[Msg], response: Option[Response], sender: Option[ActorRef[Msg]], player: Option[ActorRef[Msg]], guess: Option[Code]): Unit = {
-    if (ctx.self == player.get) {
+    // If only ctx is Set means its a Timeout Msg
+    if(response.isEmpty)
+      timedOut = true
+    else if (ctx.self == player.get) {
       if (response.isDefined) {
         sharedGuess.find(x => x._1.equals(sender.get)).get._2.receiveKey(response.get)
         if (response.get.isCorrect) {
@@ -234,12 +241,19 @@ class AIPlayer extends Players {
             referee ! AllGuessesMsg(ctx.self, myOpponents.map(x => x._1 -> x._2._1))
           }
         }
-      } else if (sharedGuess.find(x => x._1.equals(sender.get)).get._2.lastGuess.isDefined) {
-        storedGuess = sharedGuess.find(x => x._1.equals(sender.get)).get._2.lastGuess
       }
     } else if (ctx.self != sender.get && response.isDefined) {
-      sharedGuess.find(x => x._1.equals(sender.get)).get._2.lastGuess = guess
-      sharedGuess.find(x => x._1.equals(sender.get)).get._2.receiveKey(response.get)
+      // If the response is correct we save it else we computate it
+      if(response.get.isCorrect) {
+        myOpponents = myOpponents.map { el =>
+          if (el._1 == sender.get)
+            (el._1, (guess.get, true))
+          else el
+        }
+      } else {
+        sharedGuess.find(x => x._1.equals(sender.get)).get._2.lastGuess = guess
+        sharedGuess.find(x => x._1.equals(sender.get)).get._2.receiveKey(response.get)
+      }
     }
   }
 }

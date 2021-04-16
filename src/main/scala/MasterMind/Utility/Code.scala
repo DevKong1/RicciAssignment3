@@ -181,8 +181,6 @@ class CodeBreakerImpl(length: Int, codeRange: Set[Code]) extends CodeBreaker {
 
   //TODO: Need to Test this function
   override def receiveKey(response: Response): Unit = {
-    println(response)
-    println(possible)
     //lazy val iterator: Iterator[Code] = possible.iterator
     for(i <- possible) {
     //while (iterator.hasNext) {
@@ -193,7 +191,6 @@ class CodeBreakerImpl(length: Int, codeRange: Set[Code]) extends CodeBreaker {
         possible -= i
       }
     }
-    println(possible)
   }
 }
 
