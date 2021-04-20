@@ -7,7 +7,7 @@ import akka.actor.typed.{ActorRef, Behavior, DispatcherSelector}
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 import scala.swing.event.ButtonClicked
-import scala.util.Success
+import scala.util.{Random, Success}
 
 object Timeout {
   final val timeout = 20.seconds
@@ -237,28 +237,30 @@ class AIPlayer extends Players {
   var guessing: Boolean = false
   // Player already calculated a guess but timed out
   var timedOut: Boolean = false
-
+  var target : Option[ActorRef[Msg]] = Option.empty
   override def guess(ctx: ActorContext[Msg]): Unit = {
     implicit val executionContext: ExecutionContext =
       ctx.system.dispatchers.lookup(DispatcherSelector.fromConfig("my-blocking-dispatcher"))
-    // Look for a not already guessed code
-    val target = myOpponents.find(x => !x._2._2)
-
+    //Randomly selects a player to guess
+    if(target.isEmpty) {
+      val tmp = myOpponents.filterNot(_._2._2)
+      target = Option(tmp.keySet.toList(Random.nextInt(tmp.size)))
+    }
     if (target.isDefined) {
       // Already calculated a code but got timed out
-      if(storedGuess(target.get._1).isDefined) {
-        referee ! GuessMsg(ctx.self, target.get._1, storedGuess(target.get._1).get)
-        storedGuess = storedGuess.map { case (player, stored) => if(player == target.get._1) player -> Option.empty else player -> stored }
+      if(storedGuess(target.get).isDefined) {
+        referee ! GuessMsg(ctx.self, target.get, storedGuess(target.get).get)
+        storedGuess = storedGuess.map { case (player, stored) => if(player == target.get) player -> Option.empty else player -> stored }
       } else if(!guessing) {
         // If not already guessing async calculate a guess
-        sharedGuess.find(x => x._1.equals(target.get._1)).get._2.guess.onComplete {
+        sharedGuess.find(x => x._1.equals(target.get)).get._2.guess.onComplete {
           case Success(_) =>
-            val calculatedGuess = sharedGuess.find(x => x._1.equals(target.get._1)).get._2.getGuess
+            val calculatedGuess = sharedGuess.find(x => x._1.equals(target.get)).get._2.getGuess
             // If calculated a response in time
             if(!timedOut)
-              referee ! GuessMsg(ctx.self, target.get._1, calculatedGuess.get)
+              referee ! GuessMsg(ctx.self, target.get, calculatedGuess.get)
             else {
-              storedGuess = storedGuess.map { case (player, stored) => if(player == target.get._1) player -> calculatedGuess else player -> stored }
+              storedGuess = storedGuess.map { case (player, stored) => if(player == target.get) player -> calculatedGuess else player -> stored }
               timedOut = false
             }
             guessing = false
@@ -291,6 +293,7 @@ class AIPlayer extends Players {
         sharedGuess.find(x => x._1.equals(sender.get)).get._2.receiveKey(response.get)
         // If its correct might try to win
         if (response.get.isCorrect) {
+          target = None
           myOpponents = myOpponents.map { el =>
             if (el._1 == sender.get)
               (el._1, (sharedGuess.find(x => x._1.equals(sender.get)).get._2.lastGuess.get, true))
