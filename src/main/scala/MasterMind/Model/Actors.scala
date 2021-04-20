@@ -519,6 +519,7 @@ class GameController {
     case (_, msg: VictoryConfirmMsg) =>
       logChat(msg)
       GUI.logChat("The game has been stopped")
+      GUI.gameBoard.startStop.text = "New game"
       Behaviors.stopped
     case (_, msg: Msg) =>
       logChat(msg)

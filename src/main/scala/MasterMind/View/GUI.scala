@@ -114,12 +114,13 @@ class GameBoard(withHuman: Boolean, withSharing: Boolean, nPlayers: Int) extends
   logChat.editable = false
   logChat.border = new LineBorder(Color.BLACK, 2)
   logChat.font = Font("monospaced", Font.Italic, 15)
+  logChat.lineWrap = true
 
   var startStop: Button = new Button("Stop") {
     reactions += {
       case ButtonClicked(_) => startStop.text match {
-        case "Stop" => startStop.text ="Start"; GUI.gameSystem ! StopGameMsg()
-        case _ => startStop.text ="Stop"; close(); GUI.top
+        case "Stop" => startStop.text = "New Game"; GUI.gameSystem ! StopGameMsg()
+        case _ => startStop.text = "Stop"; close(); GUI.top
       }
     }
   }
