@@ -185,7 +185,7 @@ class AIPlayer extends Players {
   var sharedGuess: Map[ActorRef[Msg], CodeBreakerImpl] = Map.empty
   var storedGuess: Map[ActorRef[Msg], Option[Code]] = Map.empty
   var referee: ActorRef[Msg] = _
-  // Player is alreadu elaborating a response
+  // Player is already elaborating a response
   var guessing: Boolean = false
   // Player already calculated a guess but timed out
   var timedOut: Boolean = false
@@ -193,15 +193,20 @@ class AIPlayer extends Players {
   override def guess(ctx: ActorContext[Msg]): Unit = {
     implicit val executionContext: ExecutionContext =
       ctx.system.dispatchers.lookup(DispatcherSelector.fromConfig("my-blocking-dispatcher"))
+    // Look for a not already guessed code
     val target = myOpponents.find(x => !x._2._2)
+
     if (target.isDefined) {
+      // Already calculated a code but got timed out
       if(storedGuess(target.get._1).isDefined) {
         referee ! GuessMsg(ctx.self, target.get._1, storedGuess(target.get._1).get)
         storedGuess = storedGuess.map { case (player, stored) => if(player == target.get._1) player -> Option.empty else player -> stored }
       } else if(!guessing) {
+        // If not already guessing async calculate a guess
         sharedGuess.find(x => x._1.equals(target.get._1)).get._2.guess.onComplete {
           case Success(_) =>
             val calculatedGuess = sharedGuess.find(x => x._1.equals(target.get._1)).get._2.getGuess
+            // If calculated a response in time
             if(!timedOut)
               referee ! GuessMsg(ctx.self, target.get._1, calculatedGuess.get)
             else {
@@ -213,6 +218,9 @@ class AIPlayer extends Players {
         }
         guessing = true
       }
+    } else {
+      // If by a weird coincidence i already have all guesses try to win
+      referee ! AllGuessesMsg(ctx.self, myOpponents.map(x => x._1 -> x._2._1))
     }
   }
 
@@ -225,12 +233,15 @@ class AIPlayer extends Players {
   }
 
   override def handleResponse(ctx: ActorContext[Msg], response: Option[Response], sender: Option[ActorRef[Msg]], player: Option[ActorRef[Msg]], guess: Option[Code]): Unit = {
-    // If only ctx is Set means its a Timeout Msg
-    if(response.isEmpty)
+    // If only ctx is set means its a Timeout Msg
+    if(response.isEmpty) {
       timedOut = true
+    }
+    // If its a response to my guess so its still my turn
     else if (ctx.self == player.get) {
       if (response.isDefined) {
         sharedGuess.find(x => x._1.equals(sender.get)).get._2.receiveKey(response.get)
+        // If its correct might try to win
         if (response.get.isCorrect) {
           myOpponents = myOpponents.map { el =>
             if (el._1 == sender.get)
@@ -242,8 +253,10 @@ class AIPlayer extends Players {
           }
         }
       }
-    } else if (ctx.self != sender.get && response.isDefined) {
-      // If the response is correct we save it else we computate it
+    }
+    // SharedResponse
+    else if (ctx.self != sender.get && response.isDefined) {
+      // If the response is correct we save it else we compute it
       if(response.get.isCorrect) {
         myOpponents = myOpponents.map { el =>
           if (el._1 == sender.get)
