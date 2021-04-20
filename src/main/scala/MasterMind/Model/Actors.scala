@@ -19,9 +19,27 @@ object Timeout {
  * @tparam K Type of secret code to be guessed
  */
 sealed trait Player[T,K] {
+  /**
+   * Game hasn't started, do nothing
+   */
   def idle():Behavior[T]
+
+  /**
+   * Wait for your turn
+   * @return
+   */
   def waitTurn():Behavior[T]
+
+  /**
+   * Play your turn
+   * @return
+   */
   def myTurn():Behavior[T]
+
+  /**
+   * Referee "address"
+   * @return referee reference
+   */
   def referee:ActorRef[T]
 }
 
@@ -29,10 +47,26 @@ sealed trait Player[T,K] {
  * Two type of players involved : AI players & human player, they're represented as FSM
  */
 abstract class Players extends Player[Msg,Code] {
-
+  /**
+   * make a guess
+   * @param self reference to be put in message
+   */
   def guess(self: ActorContext[Msg]): Unit
-
+  /**
+   * Build your own secret number
+   * @param length secret number length's
+   * @param opponents list of opponents
+   * @param referee ref
+   */
   def setupCode(length:Int, opponents: List[ActorRef[Msg]], referee: ActorRef[Msg]): Unit
+  /**
+   * Someone answereed to my guess, handle response
+   * @param ctx state of the actor hierarchy atm
+   * @param response to my guess
+   * @param sender player who responded
+   * @param player who guessed (should be me)
+   * @param guess guess I previously made
+   */
   def handleResponse(ctx: ActorContext[Msg], response: Option[Response], sender: Option[ActorRef[Msg]], player: Option[ActorRef[Msg]], guess: Option[Code]): Unit
 
   var referee: ActorRef[Msg]
@@ -53,15 +87,19 @@ abstract class Players extends Player[Msg,Code] {
   override def idle(): Behavior[Msg] = {
     println("Hey I'm an actor and I've been spawned!")
     Behaviors.receive {
+          //Game hasn't started
       case (ctx, StartGameMsg(codeLength, _, opponents, ref)) =>
         println("I'm actor " + ctx.self + " and someone told me things are 'bout to get serious!")
         setupCode(codeLength, opponents.filter(x => x != ctx.self), ref)
         waitTurn()
+        //Someone allegedly won, referee is asking for my secret number
       case (ctx, WinCheckMsg(sender, _, code)) =>
         println(ctx.self + " just received a win check msg, sending response!")
         referee ! WinCheckResponseMsg(ctx.self, sender, code, myCode.getResponse(code))
         Behaviors.same
+        //Either something went insanely wrong or game ended, let's hope for the 2nd
       case (ctx, _: StopGameMsg) => println(ctx.self + " Stopping..."); Behaviors.stopped;
+        //Don't care about these messages
       case _ => Behaviors.same
     }
   }
@@ -72,14 +110,16 @@ abstract class Players extends Player[Msg,Code] {
    * @return //
    */
   def waitTurn(): Behavior[Msg] = Behaviors.receive {
+        //It's my turn
     case (ctx, _: YourTurnMsg) =>
       println(ctx.self + " starting a turn!")
       guess(ctx)
       myTurn()
-    // Received a guess from another player, send response to referee
+      //Received a guess from another player, send response to referee
     case (ctx, GuessMsg(sender, _, code)) =>
       referee ! GuessResponseMsg(ctx.self, sender, code, myCode.getResponse(code))
       Behaviors.same
+    //Someone allegedly won, referee is asking for my secret number
     case (ctx, WinCheckMsg(sender, _, code)) =>
       println(ctx.self + " just received a win check msg, sending response!")
       referee ! WinCheckResponseMsg(ctx.self, sender, code, myCode.getResponse(code))
@@ -89,8 +129,11 @@ abstract class Players extends Player[Msg,Code] {
       handleResponse(ctx, Option(response), Option(sender), Option(player), Option(code))
       referee ! ReceivedResponseMsg(ctx.self)
       Behaviors.same
+      //I apparently lost the game.
     case (ctx, _: VictoryDenyMsg) => println(ctx.self + " failed to win, stopping..."); idle();
+      //Either something went insanely wrong or game ended, let's hope for the 2nd
     case (ctx, _: StopGameMsg) => println(ctx.self + " Stopping..."); Behaviors.stopped;
+      //Don't care about these messages
     case _ => Behaviors.same
   }
 
@@ -109,6 +152,7 @@ abstract class Players extends Player[Msg,Code] {
       } else {
         Behaviors.same
       }
+      //My turn ended
     case(ctx, _: TurnEnd) =>
       println(ctx.self+" received turn end")
       handleResponse(ctx, Option.empty, Option.empty, Option.empty, Option.empty)
@@ -127,7 +171,9 @@ abstract class Players extends Player[Msg,Code] {
   }
 }
 
-
+/**
+ * Human player through [[GUI]]
+ */
 class UserPlayer extends Players {
   override var myCode: Code = _
   override var myOpponents: Map[ActorRef[Msg],(Code,Boolean)] = Map.empty
@@ -135,7 +181,6 @@ class UserPlayer extends Players {
   var myLastGuess: Code = _
 
   override def guess(self:ActorContext[Msg]): Unit = {
-    //TODO HANDLE GUI
     var guess: Map[String, Code] = Map.empty
     var click: Int = 0
     println(click)
@@ -159,7 +204,6 @@ class UserPlayer extends Players {
   }
 
   override def handleResponse(ctx: ActorContext[Msg], response: Option[Response], sender: Option[ActorRef[Msg]], player: Option[ActorRef[Msg]], guess: Option[Code]): Unit = {
-    //TODO VISUALIZE WITH GUI
     if (ctx.self == player.get) {
       if (response.isDefined && response.get.isCorrect) {
         myOpponents = myOpponents.map { el =>
@@ -167,6 +211,7 @@ class UserPlayer extends Players {
             (el._1, (myLastGuess, true))
           else el
         }
+        //If I guessed everyone correctly, try to win
         if (myOpponents.values.map(_._2).reduce(_ & _)) {
           referee ! AllGuessesMsg(ctx.self, myOpponents.map(x => x._1 -> x._2._1))
         }
@@ -179,6 +224,9 @@ object UserPlayer {
   def apply(): Behavior[Msg] = new UserPlayer().idle()
 }
 
+/**
+ * AI player
+ */
 class AIPlayer extends Players {
   override var myCode: Code = _
   override var myOpponents:Map[ActorRef[Msg],(Code,Boolean)] = Map.empty
@@ -280,8 +328,24 @@ sealed trait Referee[T,K]{
    * @return
    */
   def idle():Behavior[T]
+
+  /**
+   * Game started, referee turns
+   * @return
+   */
   def refereeTurn():Behavior[T]
+
+  /**
+   * Someone claims to have won, verify it
+   * @param ctx actor's hierarchy state
+   * @param winner alleged winner
+   * @param guesses list of alleged winner's guesses
+   * @return
+   */
   def winCheckRoutine(ctx: ActorContext[Msg], winner:ActorRef[T], guesses: Map[ActorRef[T],K]) :Behavior[T]
+  /**
+   *  list of players
+   */
   def players:Option[List[ActorRef[T]]]
 }
 /**
@@ -301,23 +365,23 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
 
   implicit def pimpResponse(response: Response): PimpedResponse = PimpedResponse(response)
 
+  //To be defined
   /** Allows a player to play his turn*/
   def nextPlayerTurn(timers: TimerScheduler[Msg]):Unit
-
   /** Excludes a player */
   def playerOut(player: ActorRef[Msg]):Unit
-
+  /** Setup game environment */
   def setupGame(length:Int, players:List[ActorRef[Msg]], sharedResponse: Boolean):Unit
-  /**
-   *
-   */
+
   override def idle() : Behavior[Msg] = {
     println("Referee has been spawned!")
     Behaviors.receive{
+      //Start the game
       case (_,StartGameMsg(codeLength, sharedResponse, newPlayers,_)) =>
         println("Ref just received startGameMsg")
         setupGame(codeLength, newPlayers, sharedResponse)
         refereeTurn()
+        //Stop the game
       case (ctx, msg: StopGameMsg) =>
         println(ctx.self + " Stopping...")
         if(players.isDefined) {
@@ -326,15 +390,18 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
           }
         }
         Behaviors.stopped
+        //Don't care about this
       case _ => Behaviors.same
     }
   }
 
   override def refereeTurn() : Behavior[Msg] = Behaviors.withTimers { timers =>
+    //ALlow next player to play his turn
     nextPlayerTurn(timers)
     Behaviors.receive {
+          //Someone claims to have won
       case (ctx, AllGuessesMsg(winner, guesses)) => winCheckRoutine(ctx, winner, guesses)
-      // The referee acts as an intermediary between players
+      // Someone guessed, forward it to target player
       case (_, msg: GuessMsg) =>
         if (currentPlayer.isDefined && currentPlayer.get == msg.getSender) {
           timers.cancelAll()
@@ -344,24 +411,27 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
           println("Player tried to guess after Timeout")
         }
         Behaviors.same
+        //A player confirmed he received a response to his guess, terminate his turn
       case (_, msg: ReceivedResponseMsg) =>
         if(!sharedResponse) {
-            if (currentPlayer.isDefined && currentPlayer.get == msg.getSender) {
-              nextPlayerTurn(timers)
-            } else {
-              println(msg.getSender + " confirmed response after Timeout")
-            }
+          if (currentPlayer.isDefined && currentPlayer.get == msg.getSender) {
+            nextPlayerTurn(timers)
+          } else {
+            println(msg.getSender + " confirmed response after Timeout")
+          }
         } else if(receivedResponses == players.get.length -1) {
           receivedResponses = 0
           nextPlayerTurn(timers)
         }
         else receivedResponses = receivedResponses + 1
         Behaviors.same
+        //Someone ended his turn
       case (_, msg: TurnEnd) =>
         controller ! msg
         msg.getPlayer ! msg //TODO WHAT?
         nextPlayerTurn(timers)
         Behaviors.same
+        //Someone answered to a guess, forward to who made the guess
       case (_, msg: GuessResponseMsg) =>
         controller ! msg
         if(!sharedResponse)
@@ -372,6 +442,7 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
           }
         }
         Behaviors.same
+        //Need to stop the game
       case (ctx, msg: StopGameMsg) =>
         println(ctx.self + " Stopping...")
         if(players.isDefined) {
@@ -388,9 +459,7 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
   }
 
   /**
-   *  Checks if a player has won by interacting with any other player asking them their secret code (via "Ask Pattern"
-   *  https://doc.akka.io/docs/akka/current/typed/interaction-patterns.html#request-response-with-ask-from-outside-an-actor
-   *  )
+   *  Checks if a player has won by interacting with any other player asking them their secret code
    * @param winner actor who claims to have won
    * @param guesses list of other players and their alleged secret code
    * @return //
@@ -406,6 +475,7 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
     }
 
     Behaviors.receive {
+      //A player sent to referee his secret number, check if it's the one guessed by the alleged winner
       case (_,WinCheckResponseMsg(_, _, _, response)) =>
         if(response.isCorrect) {
           if(responses - 1 == 0) {
@@ -421,11 +491,12 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
             responses = responses-1
             Behaviors.same
           }
-       } else {
+        } else {
           winner ! VictoryDenyMsg(winner)
           playerOut(winner)
           refereeTurn()
         }
+        //Stop the game
       case (ctx, msg: StopGameMsg) =>
         println(ctx.self + " Stopping...")
         if(players.isDefined) {
@@ -446,11 +517,7 @@ class RefereeImpl(private val controllerRef: ActorRef[Msg]) extends AbstractRefe
   override var players: Option[List[ActorRef[Msg]]] = Option.empty
   override var sharedResponse: Boolean = false
   override var receivedResponses: Int = 0
-
-  var turnManager: TurnManager = TurnManager()
-
-  def getAllPlayers: Option[List[ActorRef[Msg]]] = if(players.isDefined) Option(players.get) else Option.empty
-  def getEnemies(player: ActorRef[Msg]): Option[List[ActorRef[Msg]]] = if(players.isDefined) Option(players.get.filter(_ != player)) else Option.empty
+  val turnManager: TurnManager = TurnManager()
 
   /**
    * Tells to a player to start his turn and sets a timer that defines time in which a player has to make a guess.
@@ -532,7 +599,6 @@ class GameController {
     case (_, msg: VictoryConfirmMsg) =>
       logChat(msg)
       GUI.logChat("The game has been stopped")
-      GUI.gameBoard.startStop.text = "New game"
       Behaviors.stopped
     case (_, msg: Msg) =>
       logChat(msg)
