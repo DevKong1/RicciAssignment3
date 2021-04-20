@@ -1,6 +1,10 @@
 package MasterMind.Utility
 
-// Response given by the referee to a guess
+/**
+ * Mastermind response representation
+ * @param black
+ * @param white
+ */
 class Response(private val black: Int, private val white: Int) {
   def getBlack: Int = black
   def getWhite: Int = white
@@ -25,6 +29,9 @@ class Response(private val black: Int, private val white: Int) {
   override def toString: String = "black=" + black + ", white=" + white
 }
 
+/**
+ * Object of Response class
+ */
 object Response {
   def apply(black: Int, white: Int): Response = new Response(black, white)
 }

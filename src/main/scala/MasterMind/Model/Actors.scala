@@ -446,6 +446,9 @@ class RefereeImpl(private val controllerRef: ActorRef[Msg]) extends AbstractRefe
    */
   override def nextPlayerTurn(timers: TimerScheduler[Msg]): Unit = {
     currentPlayer = Option(turnManager.nextPlayer)
+    if(turnManager.index == 0) {
+      controller ! TurnOrderMsg(turnManager.players.map(x => x.path.name).toList)
+    }
     if(currentPlayer.isDefined) {
       controller ! YourTurnMsg(currentPlayer.get)
       currentPlayer.get ! YourTurnMsg(currentPlayer.get)
@@ -529,12 +532,12 @@ class GameController {
   def logChat(msg: Msg): Unit = msg match {
     // NO StartGame or StopGame Msg since it's the controller which executes those commands
     // Each of this will do an ex. GUI.logChat("Player " + GuessMsg.Player.Name + " tried to guess ....
-    case msg : TurnOrderMsg =>  GUI.logChat("The order for this round is " + msg.getTurns.mkString(" -> "))
+    case msg : TurnOrderMsg =>  GUI.logChat("The order for this round is " + msg.getTurns.mkString(" -> ") + "\n")
     case msg : YourTurnMsg => GUI.logChat(msg.getPlayer.path.name + " it's your turn!")
     case msg : GuessMsg => GUI.logChat(msg.getSender.path.name + " trying to guess " + msg.getPlayer.path.name + " code -> " + msg.getGuess)
     case msg : AllGuessesMsg => GUI.logChat(msg.getPlayer.path.name + " is trying to guess all codes:\n" + msg.getGuesses.map(x => x._1 + " -> " + x._2).mkString(",\n"))
     case msg : GuessResponseMsg => GUI.logChat("Response from " + msg.getSender.path.name + " to " + msg.getPlayer.path.name + " -> " + msg.getResponse + "\n")
-    case msg : TurnEnd => GUI.logChat("Player " + msg.getPlayer.path.name + " did not answer in time")
+    case msg : TurnEnd => GUI.logChat(msg.getPlayer.path.name + " did not answer in time\n")
     case msg : VictoryConfirmMsg => GUI.logChat(msg.getPlayer.path.name + " just won the game! YAY!")
     case msg : VictoryDenyMsg => GUI.logChat(msg.getPlayer.path.name + " failed miserably his attempt at winning the game.")
     case _ => GUI.logChat("Controller received an unexpected Msg")

@@ -1,13 +1,14 @@
 package MasterMind.Utility
 
-import akka.actor.typed.DispatcherSelector
-
-import scala.concurrent.{ExecutionContext, Future, Promise}
+import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Random
 import util.control.Breaks
 
-// Mastermind Code representation
 
+/**
+ * Mastermind code representation
+ * @param length
+ */
 class Code(length: Int) {
   private val codeRadix: Int = 10
   private val codeLength: Int = length
@@ -16,7 +17,6 @@ class Code(length: Int) {
 
   def codeRange: Int = Math.pow(codeRadix, codeLength).toInt
 
-  //def getCodeRadix: Int = codeRadix
   def getLength: Int = codeLength
 
   def getRange: Set[Code] = {
@@ -25,19 +25,6 @@ class Code(length: Int) {
       allCodes += Code(getLength, i)
     }
     allCodes
-  }
-
-  def isValid(input: String): Boolean = input.length match {
-    case this.codeLength =>
-      val ch: Array[Char] = input.toCharArray
-      for(i <- ch) {
-        if(Character.isDigit(i)) {
-          if(Character.digit(i, 10) >= codeRadix) { false }
-          else { false }
-        }
-      }
-      true
-    case _ => false
   }
 
   def toCodePoint(pegs: Array[Int]): Int = {
@@ -104,6 +91,9 @@ class Code(length: Int) {
   }
 }
 
+/**
+ * Object of class Code
+ */
 object Code {
 
   def apply(length: Int): Code = {
@@ -143,6 +133,11 @@ sealed trait CodeBreaker {
   def receiveKey(response: Response): Unit
 }
 
+/**
+ * Class used to create a new guess with a possible list of codes
+ * @param length
+ * @param codeRange
+ */
 class CodeBreakerImpl(length: Int, codeRange: Set[Code]) extends CodeBreaker {
   val codeLength: Int = length
   var lastGuess: Option[Code] = Option.empty
@@ -152,7 +147,6 @@ class CodeBreakerImpl(length: Int, codeRange: Set[Code]) extends CodeBreaker {
   var possible: Set[Code] = codeRange
   def getGuess: Option[Code] = lastGuess
   def guess(implicit ec: ExecutionContext): Future[Unit] = Future{
-      var aaa = 0
       isGuessing = true
       var minimumEliminated: Int = -1
       var bestGuess: Code = null
@@ -181,19 +175,18 @@ class CodeBreakerImpl(length: Int, codeRange: Set[Code]) extends CodeBreaker {
 
   //TODO: Need to Test this function
   override def receiveKey(response: Response): Unit = {
-    //lazy val iterator: Iterator[Code] = possible.iterator
     for(i <- possible) {
-    //while (iterator.hasNext) {
-      //val i: Code = iterator.next()
       if (lastGuess.isDefined && lastGuess.get.getResponse(i) != response) {
         impossible = i :: impossible
-        //iterator.remove
         possible -= i
       }
     }
   }
 }
 
+/**
+ * Object of CodeBreakerImpl class
+ */
 object CodeBreakerImplObj {
   def apply(length: Int, codeRange: Set[Code]): CodeBreakerImpl = new CodeBreakerImpl(length, codeRange)
 }

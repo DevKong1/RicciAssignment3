@@ -12,9 +12,12 @@ import scala.util.control.Exception.allCatch
 import scala.swing.event.ButtonClicked
 import scala.swing.{BoxPanel, Button, CheckBox, Dialog, Dimension, FlowPanel, Font, Label, MainFrame, Orientation, RadioButton, ScrollPane, TextArea, TextField}
 
+/**
+ * The GUI's MainFrame
+ */
 object GUI extends MainFrame {
 
-  var gameSystem: ActorSystem[Msg] = ActorSystem(GameController(), "GameSystem")
+  var gameSystem: ActorSystem[Msg] = _
   var gameBoard: GameBoard = _
   var humanPanel: HumanPanel = _
   var codeLength: Int = _
@@ -54,7 +57,8 @@ class startingGameDialog extends Dialog {
             var sharedResponses: Boolean = false
             if (humanCheck.selected) isPresent = true
             if (shareGuessCheck.selected) sharedResponses = true
-            GUI.gameBoard = Game(isPresent, numPlayers.text.toInt)
+            GUI.gameSystem = ActorSystem(GameController(), "GameSystem")
+            GUI.gameBoard = Game(isPresent, sharedResponses, numPlayers.text.toInt)
             GUI.gameSystem ! InitializeControllerMsg(numPlayers.text.toInt, GUI.codeLength, isPresent, sharedResponses)
             GUI.gameBoard.open()
           } else {
@@ -100,9 +104,12 @@ object startGame {
 
 
 /**
- * Representing the Mastermind's board
+ * The Mastermind's game board
+ * @param withHuman
+ * @param withSharing
+ * @param nPlayers
  */
-class GameBoard(withHuman: Boolean, nPlayers: Int) extends Dialog {
+class GameBoard(withHuman: Boolean, withSharing: Boolean, nPlayers: Int) extends Dialog {
   val logChat: TextArea = new TextArea("GAME IS STARTED!")
   logChat.editable = false
   logChat.border = new LineBorder(Color.BLACK, 2)
@@ -112,9 +119,7 @@ class GameBoard(withHuman: Boolean, nPlayers: Int) extends Dialog {
     reactions += {
       case ButtonClicked(_) => startStop.text match {
         case "Stop" => startStop.text ="Start"; GUI.gameSystem ! StopGameMsg()
-        case _ => startStop.text ="Stop"; logChat.text = "GAME IS STARTED!"
-          GUI.gameSystem = ActorSystem(GameController(), "GameSystem")
-          GUI.gameSystem ! InitializeControllerMsg(nPlayers, GUI.codeLength, withHuman, sharedResponses = false)
+        case _ => startStop.text ="Stop"; close(); GUI.top
       }
     }
   }
@@ -138,9 +143,13 @@ class GameBoard(withHuman: Boolean, nPlayers: Int) extends Dialog {
 }
 
 object Game {
-  def apply(withHuman: Boolean, nPlayers: Int): GameBoard = new GameBoard(withHuman, nPlayers)
+  def apply(withHuman: Boolean, withSharing: Boolean, nPlayers: Int): GameBoard = new GameBoard(withHuman, withSharing, nPlayers)
 }
 
+/**
+ * Panel for human's interaction
+ * @param nPlayers
+ */
 class HumanPanel(nPlayers: Int) extends BoxPanel(Orientation.Vertical) {
   var radioPlayer = new ListBuffer[RadioButton]()
   val selectNumber: TextField = new TextField() {
@@ -159,10 +168,9 @@ class HumanPanel(nPlayers: Int) extends BoxPanel(Orientation.Vertical) {
     }
     contents ++= radioPlayer
   }
+
   contents += new BoxPanel(Orientation.Horizontal) {
-    contents += new Label("Select a number:  ")
-    contents += selectNumber
-    contents += sendGuess
+    contents ++= Seq(new Label("Select a number:  "), selectNumber, sendGuess)
   }
 
   def getGuess: Map[String, Code] = {
@@ -192,6 +200,9 @@ class HumanPanel(nPlayers: Int) extends BoxPanel(Orientation.Vertical) {
   def isGuessValid(code: String) : Boolean = GUI.isNumber(code) && code.length == GUI.codeLength
 }
 
+/**
+ * Object of HumanPanel class
+ */
 object HumanPanelObj {
   def apply(nPlayers: Int): HumanPanel = new HumanPanel(nPlayers)
 }
