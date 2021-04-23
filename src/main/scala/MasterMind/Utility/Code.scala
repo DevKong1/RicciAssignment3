@@ -7,7 +7,7 @@ import util.control.Breaks
 
 /**
  * Mastermind code representation
- * @param length
+ * @param length of code
  */
 class Code(length: Int) {
   private val codeRadix: Int = 10
@@ -135,8 +135,8 @@ sealed trait CodeBreaker {
 
 /**
  * Class used to create a new guess with a possible list of codes
- * @param length
- * @param codeRange
+ * @param length of code
+ * @param codeRange //
  */
 class CodeBreakerImpl(length: Int, codeRange: Set[Code]) extends CodeBreaker {
   val codeLength: Int = length
@@ -173,7 +173,6 @@ class CodeBreakerImpl(length: Int, codeRange: Set[Code]) extends CodeBreaker {
       lastGuess = Option(bestGuess)
   }
 
-  //TODO: Need to Test this function
   override def receiveKey(response: Response): Unit = {
     for(i <- possible) {
       if (lastGuess.isDefined && lastGuess.get.getResponse(i) != response) {

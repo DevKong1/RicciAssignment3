@@ -9,6 +9,9 @@ import scala.concurrent.duration._
 import scala.swing.event.ButtonClicked
 import scala.util.{Random, Success}
 
+/**
+ * Player's timeout value
+ */
 object Timeout {
   final val timeout = 20.seconds
 }
@@ -85,20 +88,17 @@ abstract class Players extends Player[Msg,Code] {
    * First state: idle
    */
   override def idle(): Behavior[Msg] = {
-    println("Hey I'm an actor and I've been spawned!")
     Behaviors.receive {
           //Game hasn't started
       case (ctx, StartGameMsg(codeLength, _, opponents, ref)) =>
-        println("I'm actor " + ctx.self + " and someone told me things are 'bout to get serious!")
         setupCode(codeLength, opponents.filter(x => x != ctx.self), ref)
         waitTurn()
         //Someone allegedly won, referee is asking for my secret number
       case (ctx, WinCheckMsg(sender, _, code)) =>
-        println(ctx.self + " just received a win check msg, sending response!")
         referee ! WinCheckResponseMsg(ctx.self, sender, code, myCode.getResponse(code))
         Behaviors.same
         //Either something went insanely wrong or game ended, let's hope for the 2nd
-      case (ctx, _: StopGameMsg) => println(ctx.self + " Stopping..."); Behaviors.stopped;
+      case (_, _: StopGameMsg) => Behaviors.stopped;
         //Don't care about these messages
       case _ => Behaviors.same
     }
@@ -112,7 +112,6 @@ abstract class Players extends Player[Msg,Code] {
   def waitTurn(): Behavior[Msg] = Behaviors.receive {
         //It's my turn
     case (ctx, _: YourTurnMsg) =>
-      println(ctx.self + " starting a turn!")
       guess(ctx)
       myTurn()
       //Received a guess from another player, send response to referee
@@ -121,7 +120,6 @@ abstract class Players extends Player[Msg,Code] {
       Behaviors.same
     //Someone allegedly won, referee is asking for my secret number
     case (ctx, WinCheckMsg(sender, _, code)) =>
-      println(ctx.self + " just received a win check msg, sending response!")
       referee ! WinCheckResponseMsg(ctx.self, sender, code, myCode.getResponse(code))
       Behaviors.same
     case (ctx, GuessResponseMsg(sender, player , code , response)) =>
@@ -130,9 +128,9 @@ abstract class Players extends Player[Msg,Code] {
       referee ! ReceivedResponseMsg(ctx.self)
       Behaviors.same
       //I apparently lost the game.
-    case (ctx, _: VictoryDenyMsg) => println(ctx.self + " failed to win, stopping..."); idle();
+    case (_, _: VictoryDenyMsg) => idle();
       //Either something went insanely wrong or game ended, let's hope for the 2nd
-    case (ctx, _: StopGameMsg) => println(ctx.self + " Stopping..."); Behaviors.stopped;
+    case (_, _: StopGameMsg) => Behaviors.stopped;
       //Don't care about these messages
     case _ => Behaviors.same
   }
@@ -154,19 +152,16 @@ abstract class Players extends Player[Msg,Code] {
       }
       //My turn ended
     case(ctx, _: TurnEnd) =>
-      println(ctx.self+" received turn end")
       handleResponse(ctx, Option.empty, Option.empty, Option.empty, Option.empty)
       waitTurn()
     case (ctx, GuessMsg(sender, _, code)) =>
-      println(ctx.self + " just received a guess msg, sending response!")
       referee ! GuessResponseMsg(ctx.self, sender, code, myCode.getResponse(code))
       Behaviors.same
     case (ctx, WinCheckMsg(sender, _, code)) =>
-      println(ctx.self + " just received a win check msg, sending response!")
       referee ! WinCheckResponseMsg(ctx.self, sender, code, myCode.getResponse(code))
       Behaviors.same
-    case (_, _: VictoryDenyMsg) => println("Failed to win, stopping..."); idle();
-    case (ctx, _: StopGameMsg) => println(ctx.self + " Stopping..."); Behaviors.stopped;
+    case (_, _: VictoryDenyMsg) => idle();
+    case (_, _: StopGameMsg) => Behaviors.stopped;
     case _ => Behaviors.same
   }
 }
@@ -377,16 +372,13 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
   def setupGame(length:Int, players:List[ActorRef[Msg]], sharedResponse: Boolean):Unit
 
   override def idle() : Behavior[Msg] = {
-    println("Referee has been spawned!")
     Behaviors.receive{
       //Start the game
       case (_,StartGameMsg(codeLength, sharedResponse, newPlayers,_)) =>
-        println("Ref just received startGameMsg")
         setupGame(codeLength, newPlayers, sharedResponse)
         refereeTurn()
         //Stop the game
       case (ctx, msg: StopGameMsg) =>
-        println(ctx.self + " Stopping...")
         if(players.isDefined) {
           for (player <- players.get) {
             player ! msg
@@ -410,8 +402,6 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
           timers.cancelAll()
           controller ! msg
           msg.getPlayer ! msg
-        } else {
-          println("Player tried to guess after Timeout")
         }
         Behaviors.same
         //A player confirmed he received a response to his guess, terminate his turn
@@ -419,8 +409,6 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
         if(!sharedResponse) {
           if (currentPlayer.isDefined && currentPlayer.get == msg.getSender) {
             nextPlayerTurn(timers)
-          } else {
-            println(msg.getSender + " confirmed response after Timeout")
           }
         } else if(receivedResponses == players.get.length -1) {
           receivedResponses = 0
@@ -431,7 +419,7 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
         //Someone ended his turn
       case (_, msg: TurnEnd) =>
         controller ! msg
-        msg.getPlayer ! msg //TODO WHAT?
+        msg.getPlayer ! msg
         nextPlayerTurn(timers)
         Behaviors.same
         //Someone answered to a guess, forward to who made the guess
@@ -447,14 +435,13 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
         Behaviors.same
         //Need to stop the game
       case (ctx, msg: StopGameMsg) =>
-        println(ctx.self + " Stopping...")
         if(players.isDefined) {
           for (player <- players.get) {
             player ! msg
           }
         }
         Behaviors.stopped
-      case (_, msg: Msg) => //TODO WHAT? RIDONDANTE; OTTIMA SOLUZIONE MA TOGLI DALLE ALTRE PARTI
+      case (_, msg: Msg) =>
         controller ! msg
         Behaviors.same
       case _ => Behaviors.same
@@ -482,7 +469,6 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
       case (_,WinCheckResponseMsg(_, _, _, response)) =>
         if(response.isCorrect) {
           if(responses - 1 == 0) {
-            println(ctx.self + " Stopping...")
             if(players.isDefined) {
               for (player <- players.get) {
                 player ! StopGameMsg()
@@ -501,7 +487,6 @@ abstract class AbstractReferee extends Referee[Msg,Code] {
         }
         //Stop the game
       case (ctx, msg: StopGameMsg) =>
-        println(ctx.self + " Stopping...")
         if(players.isDefined) {
           for (player <- players.get) {
             player ! msg
@@ -549,7 +534,6 @@ class RefereeImpl(private val controllerRef: ActorRef[Msg]) extends AbstractRefe
   override def playerOut(player: ActorRef[Msg]): Unit = {
     players = Option(players.get.filter(el => el != player))
     turnManager.removePlayer(player)
-    println(player + " failed to win, removing him, now players size = " + players.size)
   }
 }
 object Referee{
@@ -558,23 +542,15 @@ object Referee{
 
 class GameController {
   var referee: Option[ActorRef[Msg]] = None
-  println("Initialized controller") //TODO JUST DEBUG MSG
 
   // No game behavior
   def noGameBehavior(): Behavior[Msg] = Behaviors.receive {
     // Initialize game msg
     case (context, msg: InitializeControllerMsg) =>
-      println("Received Init Msg") //TODO JUST DEBUG MSG
-
-      referee = Some(context.spawn(Referee(context.self), "Referee"))//TODO CHECK
-
-      println("Referee ok") //TODO JUST DEBUG MSG
 
       // If Human Player is set, create N - 1 AIPlayers
       var playersList: List[ActorRef[Msg]] = List.tabulate(if(msg.getHuman) msg.getPlayers - 1 else msg.getPlayers)(n => context.spawn(AIPlayer(), "Player" + n))
       if (msg.getHuman) playersList = context.spawn(UserPlayer(), "HumanPlayer") :: playersList
-
-      println("Created players: " + playersList) //TODO JUST DEBUG MSG
 
       playersList foreach (_ ! StartGameMsg(msg.getLength, msg.getResponses, playersList, referee.get))
       referee.get ! StartGameMsg(msg.getLength, msg.getResponses, playersList, referee.get)

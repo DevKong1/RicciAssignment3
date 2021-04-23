@@ -105,9 +105,9 @@ object startGame {
 
 /**
  * The Mastermind's game board
- * @param withHuman
- * @param withSharing
- * @param nPlayers
+ * @param withHuman is a human being playing?
+ * @param withSharing do answers need to be shared?
+ * @param nPlayers number of players
  */
 class GameBoard(withHuman: Boolean, withSharing: Boolean, nPlayers: Int) extends Dialog {
   val logChat: TextArea = new TextArea("GAME IS STARTED!")
@@ -149,7 +149,7 @@ object Game {
 
 /**
  * Panel for human's interaction
- * @param nPlayers
+ * @param nPlayers number of players
  */
 class HumanPanel(nPlayers: Int) extends BoxPanel(Orientation.Vertical) {
   var radioPlayer = new ListBuffer[RadioButton]()

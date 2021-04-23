@@ -13,7 +13,7 @@ class TurnManager(var players: Seq[ActorRef[Msg]],var index:Int) {
     nextTurnOrder()
     players(index)
   } else {
-    index += 1;
+    index += 1
     players(index)
   }
 
